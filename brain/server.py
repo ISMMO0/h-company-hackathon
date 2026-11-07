@@ -152,13 +152,24 @@ async def overlay_start(_req: web.Request) -> web.Response:
     return web.json_response({"running": False, "started": True})
 
 
+async def overlay_stop(_req: web.Request) -> web.Response:
+    """'Turn off': close the pink cursor (the brain keeps running for this page)."""
+    proc = await asyncio.create_subprocess_exec("pkill", "-f", "overlay/node_modules/electron")
+    await proc.wait()
+    for _ in range(20):
+        if not overlays:
+            break
+        await asyncio.sleep(0.1)
+    return web.json_response({"running": bool(overlays)})
+
+
 def main() -> None:
     app = web.Application()
     app.add_routes([web.get("/", index), web.get("/ws/overlay", overlay_ws), web.get("/ws/ui", ui_ws),
                     web.get("/billing", billing_status), web.post("/billing/checkout", billing_checkout),
                     web.get("/billing/success", billing_success), web.get("/history", history_list),
                     web.get("/theme", theme_get), web.post("/theme", theme_set),
-                    web.post("/overlay/start", overlay_start)])
+                    web.post("/overlay/start", overlay_start), web.post("/overlay/stop", overlay_stop)])
     web.run_app(app, host="127.0.0.1", port=8765, print=lambda *_: print("Shadow Cursor → http://127.0.0.1:8765"))
 
 

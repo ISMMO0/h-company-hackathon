@@ -101,6 +101,10 @@
   .cta:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -8px color-mix(in srgb, var(--accent) 65%, transparent); }
   .cta:active { transform: scale(.98); }
   .cta.is-on { cursor: default; }
+  .color-btn[hidden] { display: none; }
+  .big-cursor.away { animation: none; opacity: 0; }
+  .big-cursor.charging { animation: charge .5s var(--ease) infinite alternate; }
+  @keyframes charge { from { transform: translateY(0) scale(1); } to { transform: translateY(-14px) scale(1.06); } }
   .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
   .actions .cta { margin-top: 0; }
   .color-btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 18px; font-size: 15px; font-weight: 560; }
@@ -225,6 +229,7 @@
       <p class="sub">Press <kbd>⌃⌥Space</kbd> and ask. It guides you step by step, or does it while you watch.</p>
       <div class="actions">
         <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Shadow Cursor</span></button>
+        <button class="ghost color-btn" id="off" type="button" hidden><i class="ph ph-power"></i>Turn off</button>
         <button class="ghost color-btn" id="color" type="button"><i class="ph ph-palette"></i>Change color</button>
       </div>
       <div class="custom" id="custom" role="dialog" aria-label="Customize your cursor">
@@ -305,18 +310,61 @@
   $("swatches").onclick = (e) => { const b = e.target.closest(".sw[data-c]"); if (b) saveColor(b.dataset.c); };
   $("anycolor").oninput = (e) => applyColor(e.target.value);
   $("anycolor").onchange = (e) => saveColor(e.target.value);
+  // The big cursor is "your" Shadow Cursor: getting it, it jumps and flies down to your mouse;
+  // turning it off, it flies back from your mouse to the middle of the page.
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let mouse = { x: innerWidth / 2, y: innerHeight - 80 };
+  function flight() {
+    const r = big.getBoundingClientRect();
+    const tip = { x: r.left + r.width * 0.13, y: r.top + r.height * 0.08 };  // the arrow's tip
+    return `translate(${mouse.x - tip.x}px, ${mouse.y - tip.y}px) scale(0.14)`;
+  }
+  async function flyAway() {
+    big.classList.remove("charging");
+    if (!calm()) {
+      await big.animate([
+        { transform: "translateY(0) scale(1)", opacity: 1 },
+        { transform: "translateY(-46px) scale(1.18)", opacity: 1, offset: 0.35 },
+        { transform: flight(), opacity: 0.2 },
+      ], { duration: 900, easing: "cubic-bezier(0.5, 0, 0.2, 1)" }).finished;
+    }
+    big.classList.add("away");
+  }
+  async function flyBack() {
+    big.classList.remove("away");
+    if (calm()) return;
+    big.style.animation = "none";
+    await big.animate([
+      { transform: flight(), opacity: 0.2 },
+      { transform: "translateY(-30px) scale(1.1)", opacity: 1, offset: 0.7 },
+      { transform: "translateY(0) scale(1)", opacity: 1 },
+    ], { duration: 800, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }).finished;
+    big.style.animation = "";
+  }
   function cursorOn(on) {
     $("get-label").textContent = on ? "Shadow Cursor is on" : "Get your Shadow Cursor";
     $("get-icon").className = `ph ${on ? "ph-check-circle" : "ph-cursor-click"}`;
     $("get").classList.toggle("is-on", on);
+    $("off").hidden = !on;
+    if (on && !big.classList.contains("away") && !big.classList.contains("charging")) big.classList.add("away");
+    if (!on && big.classList.contains("away")) flyBack();
   }
   $("get").onclick = async () => {
     if ($("get").classList.contains("is-on")) return;
     $("get-label").textContent = "Starting…";
+    if (!calm()) big.classList.add("charging");
     try {
       const r = await (await fetch("/overlay/start", { method: "POST" })).json();
+      if (r.running) await flyAway();
+      big.classList.remove("charging");
       cursorOn(r.running);
-    } catch { cursorOn(false); }
+    } catch { big.classList.remove("charging"); cursorOn(false); }
+  };
+  $("off").onclick = async () => {
+    $("off").disabled = true;
+    try { await fetch("/overlay/stop", { method: "POST" }); } catch {}
+    $("off").disabled = false;
+    cursorOn(false);
   };
   $("color").onclick = () => $("custom").classList.toggle("on");
   $("close").onclick = () => $("custom").classList.remove("on");
@@ -325,6 +373,7 @@
   // the big cursor leans toward your mouse: it follows you
   const big = $("big");
   document.addEventListener("pointermove", (e) => {
+    mouse = { x: e.clientX, y: e.clientY };
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const r = big.getBoundingClientRect();
     const dx = e.clientX - (r.left + r.width / 2);
