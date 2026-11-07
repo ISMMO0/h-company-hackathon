@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -90,7 +91,8 @@ class Agent:
         self.hush()
         # Long replies get picked up by the mic: first sentence only unless it's a short narration.
         said = text if whole else text.split(". ")[0]
-        self.say_proc = subprocess.Popen(["say", "-r", "190", said.strip()[:200]])
+        # OpenAI 'sage' voice (brain/tts.py), falls back to the Mac voice on its own.
+        self.say_proc = subprocess.Popen([sys.executable, "-m", "brain.tts", said.strip()[:200]])
 
     async def finish_speaking(self, cap: float = 8.0) -> None:
         """Do it mode: let the current sentence end before the next one (it used to be cut off)."""

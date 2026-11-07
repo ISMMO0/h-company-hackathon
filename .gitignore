@@ -23,3 +23,5 @@ data/
 # Real screenshots stay local
 bench/fixtures/*/
 !bench/fixtures/example/
+voice-samples/
+data/tts-cache/
