@@ -2,6 +2,11 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 13:15** GUIDE mode follows the user live: after showing a step it watches the screen
+  (tiny screenshots every ~0.3 s, pixel diff, no model call) and re-plans as soon as the screen
+  changes and settles or the user clicks; Next is only a fallback. Steps the user already did
+  are skipped. A follow-along panel next to the pink cursor (Devin, protocol v2) replaces the
+  control page during a task. Testing is done by the team lead, not by agents.
 - **Sat 12:55** Fixes from live tests: the agent ignores its own control page; frontmost app is
   read from the live window list (NSWorkspace went stale); TTS is cut before listening and only
   the first sentence is spoken (the mic was transcribing our own voice).

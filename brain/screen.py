@@ -10,7 +10,7 @@ import time
 
 import Quartz
 from AppKit import NSScreen
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 def screen_size() -> tuple[int, int]:
@@ -23,6 +23,19 @@ def capture() -> Image.Image:
         subprocess.run(["screencapture", "-x", "-m", "-t", "png", f.name], check=True)
         img = Image.open(f.name).convert("RGB")
     return img.resize(screen_size())
+
+
+def thumb() -> Image.Image:
+    """Tiny grayscale screenshot for cheap change detection (pink cursor included: it's static)."""
+    with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
+        subprocess.run(["screencapture", "-x", "-m", "-t", "jpg", f.name], check=True)
+        return Image.open(f.name).convert("L").resize((240, 156))
+
+
+def changed(a: Image.Image, b: Image.Image, frac: float = 0.006) -> bool:
+    """True if more than `frac` of the pixels changed noticeably (ignores hover flicker)."""
+    diff = ImageChops.difference(a, b).point(lambda v: 255 if v > 28 else 0)
+    return diff.histogram()[255] > frac * a.width * a.height
 
 
 def mouse_pos() -> tuple[float, float]:

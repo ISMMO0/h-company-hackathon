@@ -34,6 +34,7 @@ class Brain:
         self.say_proc: subprocess.Popen | None = None
         self.listening = False
         self.default_mode = "guide"  # follows the toggle on the control page
+        self.mode = "guide"  # mode of the running task; the panel toggle switches it live
 
     # --- outputs -------------------------------------------------------------
     async def to_overlay(self, msg: dict) -> None:
@@ -91,16 +92,20 @@ class Brain:
                           "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()})
 
     # --- the loop ------------------------------------------------------------
+    async def panel(self, text: str, state: str) -> None:
+        await self.to_overlay({"type": "step", "text": text, "mode": self.mode, "state": state})
+        await self.to_ui({"type": "status", "text": f"{state}: {text}" if text else state})
+
     async def run(self, task: str, mode: str, countdown: bool = True) -> None:
         self.stopped = False
-        stop = lambda: self.stopped
+        self.mode = mode
         try:
             for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
             app = screen.frontmost_app()
-            await self.to_ui({"type": "status", "text": f"Working in {app}"})
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
+            await self.panel(task, "thinking")
             self.speak("On it.")
 
             hint = await asyncio.to_thread(linkup.how_to, task, app)
@@ -108,6 +113,7 @@ class Brain:
                 await self.log(f"Linkup notes:\n{hint}")
             messages = holo.new_conversation(task, hint)
             w, h = screen.screen_size()
+            last_label = ""
 
             for i in range(MAX_STEPS):
                 if self.stopped:
@@ -123,85 +129,99 @@ class Brain:
                     text = args.get("content", "Done.")
                     await self.send_preview(img, label=text)
                     await self.log(f"✓ {text}")
+                    await self.panel(text, "done")
                     self.speak(text)
+                    await asyncio.sleep(6)
                     break
 
-                result = await self.act(mode, name, args, img, w, h, stop)
+                result = await self.act(name, args, img, w, h, repeat=(label_of(name, args) == last_label))
+                last_label = label_of(name, args)
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
-                await asyncio.sleep(0.8)  # let the UI react
             else:
                 await self.log("Step budget reached.")
+        except asyncio.CancelledError:
+            pass
         except Exception as e:  # noqa: BLE001 - surface any failure in the UI
             await self.log(f"Error: {type(e).__name__}: {e}")
         finally:
             await self.to_overlay({"type": "clear"})
             await self.to_ui({"type": "status", "text": "Idle"})
 
-    async def act(self, mode, name, args, img, w, h, stop) -> str:
+    async def act(self, name, args, img, w, h, repeat=False) -> str:
+        """Show the step, then do it (DO) or watch the person do it (GUIDE)."""
         front = screen.frontmost_app()
-        if mode == "do" and front in screen.SYSTEM_APPS:
+        if self.mode == "do" and front in screen.SYSTEM_APPS:
             return await self.blocked(front)
+        label = label_of(name, args)
+        point = None
         if name == "click":
-            x, y = args["x"] / 1000 * w, args["y"] / 1000 * h
-            owner = screen.window_owner_at(x, y)
-            if mode == "do" and owner in screen.SYSTEM_APPS:
-                return await self.blocked(owner)
-            label = f"Click {args.get('element', '')}".strip()
-            await self.to_overlay({"type": "cursor", "x": x, "y": y, "label": label})
-            await self.send_preview(img, (x, y), label)
+            point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
+            if self.mode == "do" and screen.window_owner_at(*point) in screen.SYSTEM_APPS:
+                return await self.blocked(screen.window_owner_at(*point))
+            await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
+        await self.send_preview(img, point, label)
+        if not repeat:
             self.speak(label)
-            if mode == "do":
-                await asyncio.sleep(0.9)
-                await asyncio.to_thread(screen.click, x, y)
-                return "Clicked."
-            await self.to_ui({"type": "status", "text": "Your turn: click where the pink cursor points"})
-            pos = await asyncio.to_thread(screen.wait_for_user_click, stop)
-            return "The user clicked it." if pos else "No click."
 
-        if name == "type":
-            text = args.get("text", "")
-            label = f'Type "{text}"'
-            await self.send_preview(img, label=label)
-            self.speak(label)
-            if mode == "do":
-                await asyncio.to_thread(screen.type_text, text)
-                return "Typed."
-            return await self.wait_next("The user typed it.")
+        if self.mode == "do":
+            await self.panel(label, "acting")
+            await asyncio.sleep(0.9 if point else 0.4)
+            if name == "click":
+                await asyncio.to_thread(screen.click, *point)
+            elif name == "type":
+                await asyncio.to_thread(screen.type_text, args.get("text", ""))
+            elif name == "press":
+                await asyncio.to_thread(screen.press, args.get("keys", ""))
+            elif name == "scroll":
+                await asyncio.to_thread(screen.scroll, args.get("direction", "down"))
+            await asyncio.sleep(0.8)  # let the app react
+            return "Done."
 
-        if name == "press":
-            keys = args.get("keys", "")
-            label = f"Press {keys}"
-            await self.send_preview(img, label=label)
-            self.speak(label)
-            if mode == "do":
-                await asyncio.to_thread(screen.press, keys)
-                return "Pressed."
-            return await self.wait_next("The user pressed it.")
+        await self.panel(label, "waiting")
+        why = await self.watch()
+        if why == "next":
+            return "The person pressed Next: they did this step or want to skip it."
+        return ("The screen changed: the person acted. Look at the new screenshot. If this step "
+                "is done, or they already moved ahead, give the next step from where they are now. "
+                "Repeat the step only if it is clearly still needed.")
 
-        if name == "scroll":
-            direction = args.get("direction", "down")
-            if mode == "do":
-                await asyncio.to_thread(screen.scroll, direction)
-                return "Scrolled."
-            self.speak(f"Scroll {direction}")
-            return await self.wait_next("The user scrolled.")
-
-        return f"Unknown action {name}."
+    async def watch(self) -> str:
+        """GUIDE mode: return as soon as the person changes the screen (then it settles),
+        clicks, or presses Next. Cheap pixel diffs, no model calls."""
+        self.next_step.clear()
+        await asyncio.sleep(0.6)  # let the pink cursor finish moving
+        base = await asyncio.to_thread(screen.thumb)
+        while not self.stopped:
+            if self.next_step.is_set():
+                return "next"
+            clicked = screen.mouse_down()
+            cur = await asyncio.to_thread(screen.thumb)
+            if clicked or screen.changed(base, cur):
+                prev, quiet_since = cur, time.time()
+                while not self.stopped and time.time() - quiet_since < 0.8:
+                    await asyncio.sleep(0.25)
+                    nxt = await asyncio.to_thread(screen.thumb)
+                    if screen.changed(prev, nxt):
+                        quiet_since = time.time()
+                    prev = nxt
+                if clicked or screen.changed(base, prev):
+                    return "changed"
+            await asyncio.sleep(0.3)
+        return "stopped"
 
     async def blocked(self, app: str) -> str:
         """A system/permission dialog is in the way: never act on it, hand control back."""
-        text = f"A system dialog from {app} needs you. Please handle it yourself, then press Next."
+        text = f"A system dialog from {app} needs you. Handle it yourself, then press Next."
         await self.log(f"⚠ {text}")
+        await self.panel(text, "waiting")
         self.speak("A system dialog needs you. Please handle it yourself.")
-        return await self.wait_next(
-            "The person handled the system dialog. Do not interact with system dialogs.")
+        await self.wait_next()
+        return "The person handled the system dialog. Do not interact with system dialogs."
 
-    async def wait_next(self, done: str) -> str:
+    async def wait_next(self) -> None:
         self.next_step.clear()
-        await self.to_ui({"type": "status", "text": "Your turn — press Next when done"})
         while not self.next_step.is_set() and not self.stopped:
             await asyncio.sleep(0.1)
-        return done
 
     def start(self, task: str, mode: str, countdown: bool = True) -> None:
         self.stop()
@@ -258,6 +278,24 @@ def mode_from(text: str, default: str) -> str:
     return default
 
 
+def label_of(name: str, args: dict) -> str:
+    if name == "click":
+        return f"Click {args.get('element', '')}".strip()
+    if name == "type":
+        return f'Type "{args.get("text", "")}"'
+    if name == "press":
+        return f"Press {args.get('keys', '')}"
+    if name == "scroll":
+        return f"Scroll {args.get('direction', 'down')}"
+    return name
+
+
+def short(label: str, n: int = 42) -> str:
+    """Bubble text next to the pink cursor: first clause, trimmed."""
+    first = label.split(" - ")[0].split(", ")[0]
+    return first if len(first) <= n else first[: n - 1] + "…"
+
+
 brain = Brain()
 
 
@@ -276,8 +314,17 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
         kind = json.loads(msg.data).get("type")
         if kind == "hidden":
             brain.hidden.set()
-        elif kind == "hotkey":
+        elif kind in ("hotkey", "mic"):
             asyncio.create_task(brain.on_hotkey())
+        elif kind == "next":
+            brain.next_step.set()
+        elif kind == "mode":
+            brain.mode = brain.default_mode = json.loads(msg.data).get("mode", "guide")
+            brain.next_step.set()  # re-plan now in the new mode
+        elif kind == "stop":
+            brain.stop()
+            await brain.to_overlay({"type": "clear"})
+            await brain.log("■ Stopped")
     brain.overlays.discard(ws)
     return ws
 
@@ -300,7 +347,7 @@ async def ui_ws(req: web.Request) -> web.WebSocketResponse:
         elif data.get("type") == "next":
             brain.next_step.set()
         elif data.get("type") == "mode":
-            brain.default_mode = data.get("mode", "guide")
+            brain.mode = brain.default_mode = data.get("mode", "guide")
     brain.uis.discard(ws)
     return ws
 
