@@ -1,6 +1,6 @@
 # Live mode plan: always listening, always fast
 
-Status: **approved Sat 18:20 by the team lead**, reviewed by Devin. Fallback tag `v3.1-demo`.
+Status: **shipped Sat 19:00**, reviewed by Devin (his 4 points applied), waiting for the team lead's test. Fallback tag `v3.1-demo`.
 
 Goal: it should feel live, as if it watched the screen like a stream. As soon as you speak, the
 cursor reacts; the heavy work (GPT, web) runs in the background and never makes you wait.

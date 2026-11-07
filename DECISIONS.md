@@ -2,6 +2,14 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 19:00** Live mode shipped (docs/live-mode-plan.md, reviewed by Devin; overlay v6 by Devin):
+  the mic stays open during a task (⌃⌥Space = mute/unmute; Gladia gets silence while Shadow
+  speaks so it never hears itself); the pink cursor makes a tentative guess while you're still
+  talking (one screenshot per utterance, never clicks); the task starts at once on clear keywords
+  ("show me", "do it") with GPT confirming in the background, otherwise it waits for GPT; the Linkup
+  playbook joins the plan when ready instead of blocking the start; after a click, planning starts
+  early and is dropped if the screen keeps changing; "ignore" intent for thinking out loud;
+  repeat detection no longer includes `why` (YouTube-test bug). Fallback tag `v3.1-demo`.
 - **Sat 17:45** v3.1 fixes after the YouTube test (docs/fix-v3.1-plan.md, reviewed by Devin):
   input only counts in the task's app(s) (typing elsewhere = quiet pause); re-plans don't use the
   30-action budget; wait for a pause only after recent input; window title goes to Linkup and Holo
