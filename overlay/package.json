@@ -1,0 +1,17 @@
+{
+  "name": "shadow-cursor-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shadow Cursor overlay: transparent click-through window that draws the pink cursor",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test-server": "node test-server.js"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "electron": "44.10.2"
+  }
+}
