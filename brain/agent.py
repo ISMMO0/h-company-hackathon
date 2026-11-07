@@ -298,9 +298,8 @@ class Agent:
         elif intent == "wait":
             self.push("said", f"{text} (they ask you to wait: use 'wait')")
         elif intent == "question":
-            info = await asyncio.to_thread(linkup.lookup, self.current_task, app, task, task)
-            extra = f" Web notes: {info}" if info else ""
-            self.push("said", f"{text} (a question: answer it with 'say', then continue).{extra}")
+            self.push("said", f"{text} (a question: answer it with 'say', then continue)")
+            asyncio.create_task(self._lookup_for(task, app))
         else:  # update
             self.current_task = task
             self.push("said", f"{text} (the task is now: {task})")
@@ -359,6 +358,12 @@ class Agent:
                 self.brief = brief
                 await self.log(f"🧠 Session brief updated:\n{brief}")
         asyncio.create_task(job())
+
+    async def _lookup_for(self, question: str, app: str) -> None:
+        """Web notes for a mid-task question, added when ready (never blocks the answer)."""
+        info = await asyncio.to_thread(linkup.lookup, self.current_task, app, question, question)
+        if info and self.busy():
+            self.push("said", f"(web notes for their question '{question}': {info})")
 
     async def answer(self, question: str) -> None:
         """Pure information: answer it, with sources, and offer to show it on screen."""
@@ -582,7 +587,7 @@ class Agent:
             await self.panel(text, "waiting")
             await self.chat("shadow", text)
             self.speak(text, whole=len(text) < 160)
-            await asyncio.sleep(min(4.0, 0.9 + len(text) / 18))  # let it be heard, then keep guiding
+            await asyncio.sleep(0.3)  # the voice plays on while we plan the next step
             return "Said it. Now continue guiding from the current screen.", "said"
 
         if name == "wait":
