@@ -88,6 +88,12 @@ class Agent:
         said = text if whole else text.split(". ")[0]
         self.say_proc = subprocess.Popen(["say", "-r", "190", said.strip()[:200]])
 
+    async def finish_speaking(self, cap: float = 8.0) -> None:
+        """Do it mode: let the current sentence end before the next one (it used to be cut off)."""
+        end = time.time() + cap
+        while self.say_proc and self.say_proc.poll() is None and time.time() < end and not self.stopped:
+            await asyncio.sleep(0.08)
+
     def hush(self) -> None:
         if self.say_proc and self.say_proc.poll() is None:
             self.say_proc.terminate()
@@ -537,6 +543,7 @@ class Agent:
                 await self.panel(text, "done")
                 await self.chat("shadow", text)
                 self.memory.finish_task(text)
+                await self.finish_speaking()
                 self.speak(text)
                 await asyncio.sleep(6)
                 return
@@ -589,6 +596,8 @@ class Agent:
             text = args.get("text", "")
             await self.panel(text, "waiting")
             await self.chat("shadow", text)
+            if self.mode == "do":
+                await self.finish_speaking()
             self.speak(text, whole=len(text) < 160)
             await asyncio.sleep(0.3)  # the voice plays on while we plan the next step
             return "Said it. Now continue guiding from the current screen.", "said"
@@ -639,6 +648,7 @@ class Agent:
         if not repeat:
             await self.chat("shadow", f"{label} ({why})" if why else label)
             if self.mode == "do":
+                await self.finish_speaking()
                 self.speak(narrate(name, args, why), whole=True)
             else:
                 self.speak(short(label, 70), whole=True)
