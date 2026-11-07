@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadow Cursor</title>
+<style>
+  :root { --pink: #ff3ea5; --ink: #111; --muted: #888; --line: #e6e6e6; --bg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #f2f2f2; --muted: #8a8a8a; --line: #2a2a2a; --bg: #111; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+  main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+  h1 { font-size: 20px; margin: 0 0 24px; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pink); }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+          background: transparent; color: inherit; font: inherit; outline: none; }
+  input:focus { border-color: var(--pink); }
+  button { padding: 0 16px; border: 0; border-radius: 10px; font: inherit; cursor: pointer;
+           background: var(--ink); color: var(--bg); }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { background: transparent; color: var(--muted); border-radius: 0; padding: 6px 14px; }
+  .seg button.on { background: var(--pink); color: #fff; }
+  #status { color: var(--muted); font-size: 14px; }
+  #next { display: none; }
+  img { width: 100%; margin-top: 20px; border-radius: 10px; border: 1px solid var(--line); display: none; }
+  #label { margin-top: 8px; font-size: 14px; }
+  pre { margin-top: 20px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--muted);
+        white-space: pre-wrap; max-height: 220px; overflow: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="dot"></span>Shadow Cursor</h1>
+  <form id="f">
+    <input id="task" placeholder="What do you want to do?" autocomplete="off" autofocus>
+    <button>Go</button>
+  </form>
+  <div class="row">
+    <div class="seg"><button type="button" data-m="guide" class="on">Guide me</button><button type="button" data-m="do">Do it</button></div>
+    <button type="button" class="ghost" id="stop">Stop</button>
+    <button type="button" class="ghost" id="next">Next</button>
+    <span id="status">Connecting…</span>
+  </div>
+  <img id="shot" alt="">
+  <div id="label"></div>
+  <pre id="log"></pre>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let mode = "guide", ws;
+  document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => {
+    mode = b.dataset.m;
+    document.querySelectorAll(".seg button").forEach((x) => x.classList.toggle("on", x === b));
+  });
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws/ui`);
+    ws.onopen = () => $("status").textContent = "Idle";
+    ws.onclose = () => { $("status").textContent = "Brain offline…"; setTimeout(connect, 1000); };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.type === "status") {
+        $("status").textContent = m.text;
+        $("next").style.display = m.text.includes("Next") ? "inline-block" : "none";
+      } else if (m.type === "log") {
+        $("log").textContent += m.text + "\n";
+        $("log").scrollTop = 1e9;
+      } else if (m.type === "preview") {
+        $("shot").src = m.image; $("shot").style.display = "block"; $("label").textContent = m.label;
+      }
+    };
+  }
+  connect();
+  $("f").onsubmit = (e) => {
+    e.preventDefault();
+    $("log").textContent = "";
+    ws.send(JSON.stringify({ type: "start", task: $("task").value, mode }));
+  };
+  $("stop").onclick = () => ws.send(JSON.stringify({ type: "stop" }));
+  $("next").onclick = () => ws.send(JSON.stringify({ type: "next" }));
+</script>
+</body>
+</html>

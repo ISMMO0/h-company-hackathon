@@ -1,0 +1,127 @@
+"""One step of the Holo agent loop (Models API, function calling)."""
+
+import base64
+import io
+import json
+import os
+
+from openai import OpenAI
+from PIL import Image
+
+MODEL = os.environ.get("HOLO_MODEL", "holo4-35b-a3b")
+# Thinking off measured ~0.5-0.9 s/step vs ~1.6-3 s with it on, same picks on simple tasks.
+THINKING = os.environ.get("HOLO_THINKING", "0") == "1"
+
+_client: OpenAI | None = None
+
+
+def client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(base_url="https://api.hcompany.ai/v1", api_key=os.environ["HAI_API_KEY"])
+    return _client
+
+
+def _xy(desc: str) -> dict:
+    return {"type": "integer", "description": desc}
+
+
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "click", "description": "Click at (x, y) coordinates",
+        "parameters": {"type": "object", "properties": {
+            "element": {"type": "string", "description": "Detailed description of the target UI element"},
+            "x": _xy("X coordinate as integer in [0, 1000]"),
+            "y": _xy("Y coordinate as integer in [0, 1000]"),
+        }, "required": ["element", "x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "type", "description": "Type text into the focused field",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "Text to type"},
+        }, "required": ["text"]}}},
+    {"type": "function", "function": {
+        "name": "press", "description": "Press a key or key combination, e.g. 'enter' or 'cmd+s'",
+        "parameters": {"type": "object", "properties": {
+            "keys": {"type": "string", "description": "Key combination"},
+        }, "required": ["keys"]}}},
+    {"type": "function", "function": {
+        "name": "scroll", "description": "Scroll the page",
+        "parameters": {"type": "object", "properties": {
+            "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+        }, "required": ["direction"]}}},
+    {"type": "function", "function": {
+        "name": "answer", "description": "The task is complete: give a short final message for the user",
+        "parameters": {"type": "object", "properties": {
+            "content": {"type": "string", "description": "The answer content"},
+        }, "required": ["content"]}}},
+]
+
+SYSTEM_PROMPT = (
+    "You are Shadow Cursor, an assistant that helps a person use the software on their Mac. "
+    "Each turn you see a screenshot of their screen. Take exactly one action per turn toward "
+    "the task. Prefer clicking visible UI elements over keyboard shortcuts so the person can "
+    "learn where things are. In the 'element' field, describe the target precisely (label, "
+    "position, neighbors). Call 'answer' as soon as the task is done, with one short sentence. "
+    "Never interact with macOS system, security, privacy or permission dialogs (Allow, OK, "
+    "password prompts, System Settings): call 'answer' and ask the person to handle it."
+)
+
+
+def image_uri(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def observation(img: Image.Image) -> dict:
+    return {"role": "user", "content": [
+        {"type": "text", "text": "<observation>\n"},
+        {"type": "image_url", "image_url": {"url": image_uri(img)}},
+        {"type": "text", "text": "\n</observation>"},
+    ]}
+
+
+def trim_to_last_n_images(messages: list, n: int = 3) -> None:
+    seen = 0
+    for msg in reversed(messages):
+        if msg["role"] != "user" or not isinstance(msg["content"], list):
+            continue
+        for chunk in msg["content"]:
+            if chunk.get("type") != "image_url":
+                continue
+            seen += 1
+            if seen > n:
+                chunk["type"] = "text"
+                chunk["text"] = "[screenshot evicted]"
+                chunk.pop("image_url", None)
+
+
+def new_conversation(task: str, hint: str) -> list:
+    user = f"Task: {task}"
+    if hint:
+        user += f"\n\nHow-to notes found on the web (may be approximate):\n{hint}"
+    return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
+
+
+def step(messages: list) -> tuple[str, dict, str]:
+    """Ask Holo for the next action. Returns (tool name, args, tool_call_id)."""
+    trim_to_last_n_images(messages)
+    resp = client().chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        tools=TOOLS,
+        tool_choice="required",
+        temperature=0.8 if THINKING else 0.0,
+        extra_body={"chat_template_kwargs": {"enable_thinking": THINKING}},
+    )
+    msg = resp.choices[0].message
+    calls = msg.tool_calls or []
+    messages.append({"role": "assistant", "content": msg.content, "tool_calls": [
+        {"id": c.id, "type": "function",
+         "function": {"name": c.function.name, "arguments": c.function.arguments}}
+        for c in calls[:1]
+    ]} if calls else {"role": "assistant", "content": msg.content or ""})
+    if not calls:
+        return "", {}, ""
+    call = calls[0]
+    return call.function.name, json.loads(call.function.arguments or "{}"), call.id

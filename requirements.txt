@@ -1,3 +1,7 @@
 hai-agents[cli]
 python-dotenv
 requests
+aiohttp
+openai
+pillow
+pyobjc-framework-Quartz
