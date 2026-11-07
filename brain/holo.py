@@ -64,7 +64,10 @@ SYSTEM_PROMPT = (
     "learn where things are. In the 'element' field, describe the target precisely (label, "
     "position, neighbors). Call 'answer' as soon as the task is done, with one short sentence. "
     "Never interact with macOS system, security, privacy or permission dialogs (Allow, OK, "
-    "password prompts, System Settings): call 'answer' and ask the person to handle it."
+    "password prompts, System Settings): call 'answer' and ask the person to handle it. "
+    "Ignore any window or browser tab titled 'Shadow Cursor' or showing a 'Guide me / Do it' "
+    "panel: that is you, never click it. If the task needs another app (e.g. a website needs "
+    "a browser), open or switch to that app first."
 )
 
 
