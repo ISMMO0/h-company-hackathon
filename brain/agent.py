@@ -393,7 +393,9 @@ class Agent:
                 if why == "pixels" and repeat:
                     pixels_ok = False  # something animates on screen: only react to real input
             t_point = getattr(self, "_t_point", 0.0)
-            await self.log(f"Step {actions}: {name} {short_args(args)}  "
+            at = getattr(self, "_last_point", None)
+            at_txt = f" @({at[0]:.0f},{at[1]:.0f})" if at else ""
+            await self.log(f"Step {actions}: {name}{at_txt} {short_args(args)}  "
                            f"[capture {t_cap:.1f}s · plan {t_plan:.1f}s · point {t_point:.1f}s"
                            f" · then {time.perf_counter() - t1:.1f}s on the person]")
             pl.result(action, result)
@@ -404,6 +406,7 @@ class Agent:
     async def act(self, pl, name, args, full, w, h, repeat, pixels_ok) -> tuple[str, str]:
         """Show the step, then do it (DO) or watch the person (GUIDE). Returns (tool result, why)."""
         self._t_point = 0.0
+        self._last_point = None
         if self.mode == "do" and screen.frontmost_app() in screen.SYSTEM_APPS:
             return await self.blocked(screen.frontmost_app()), "next"
 
@@ -430,6 +433,7 @@ class Agent:
                                              (args.get("x", 500), args.get("y", 500)))
             self._t_point = time.perf_counter() - t
             point = (nx / 1000 * w, ny / 1000 * h)
+            self._last_point = point
             owner = screen.window_owner_at(*point)
             if self.mode == "do" and owner in screen.SYSTEM_APPS:
                 return await self.blocked(owner), "next"
@@ -459,6 +463,8 @@ class Agent:
             return "Done.", "did"
 
         await self.panel(label, "waiting", why)
+        at = f" @({point[0]:.0f},{point[1]:.0f})" if point else ""
+        await self.log(f"show {name}{at} {short_args(args)}")
         reason = await self.watch(pixels_ok)
         return result_text(reason), reason
 
