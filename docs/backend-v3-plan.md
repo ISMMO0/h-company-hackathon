@@ -1,6 +1,6 @@
 # Backend v3 plan: know before acting
 
-Status: **approved Sat 15:40 (with OpenAI), in progress.** Reviewed by Devin (Ask mode). Fallback tag `v2-demo`.
+Status: **brain shipped Sat 16:30; overlay answer card pending (Devin).** Reviewed by Devin (Ask mode). Fallback tag `v2-demo`.
 
 ## What the live tests showed
 1. **It discovers the app with you** ("click here… no, here…"). Cause: Linkup runs in the

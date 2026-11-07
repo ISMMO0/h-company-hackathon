@@ -2,6 +2,10 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 16:30** Backend v3 brain shipped (overlay v5 card pending from Devin). Measured: Linkup
+  playbook 3.4-4.5 s (Codex: finds `$skill-creator`, the real path), sourced answer 3.6 s,
+  plan p50 1.0 s + point 0.4 s per step. Router: keywords 10/10 on test phrases; OpenAI used
+  automatically once OPENAI_API_KEY is in .env (model from OPENAI_MODEL or newest gpt-*-mini).
 - **Sat 15:40** Backend v3 approved (docs/backend-v3-plan.md), fallback tag `v2-demo`:
   knowledge before the first click (Linkup structured playbook, ≤3.5 s, seeds Holo's plan;
   targeted lookup when stuck); an ANSWER path for pure questions (answer card + "show me /
