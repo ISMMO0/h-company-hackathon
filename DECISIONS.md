@@ -109,6 +109,6 @@ Team lead: in Do it, the goal is to show and explain while doing, not to finish 
 - No Stripe in the demo: what we have is enough. Demo and submission are Sunday's problem.
 - Deploy (later, on Vercel): when a juror clicks "Get your Shadow Cursor", it must work exactly as it
   does on the team lead's Mac (see docs/deploy-plan.md).
-- The cursor gets a "pet" personality: it breathes when idle, hops (grows, then settles) on each new
-  spot, and spins while it thinks. Panel restyle: 4 options shown to the team lead (pill, speech
+- The cursor spins while it thinks and grows a little once it arrives on what it points at
+  (no idle breathing: the team lead wants it subtle, not a pet). Panel restyle: 4 options shown to the team lead (pill, speech
   bubble, island, minimal), waiting for the pick.
