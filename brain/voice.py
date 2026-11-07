@@ -1,6 +1,9 @@
-"""Voice command capture: mic → Gladia live STT → one final utterance.
+"""Push-to-talk: mic → Gladia live STT, with live text.
 
-    text = await voice.listen_once(on_partial=print)
+    lis = Listener(on_text=print)
+    await lis.start()          # ⌃⌥Space
+    text = await lis.finish()  # ⌃⌥Space again: send now
+    await lis.cancel()         # ⌃⌥X
 """
 
 import asyncio
@@ -12,8 +15,8 @@ import sounddevice as sd
 
 SAMPLE_RATE = 16000
 BLOCK = SAMPLE_RATE // 10  # 100 ms of audio per frame
-TIMEOUT = 30.0
-PAUSE = 1.5  # after a final utterance, keep listening this long in case they go on
+SILENCE_SEND = 4.0  # fallback: send by itself after this long without new words
+MAX_SECONDS = 60.0
 
 SESSION_CONFIG = {
     "encoding": "wav/pcm",
@@ -21,7 +24,6 @@ SESSION_CONFIG = {
     "bit_depth": 16,
     "channels": 1,
     "language_config": {"languages": ["fr", "en"], "code_switching": True},
-    # 0.3 s cut people off mid-sentence; 0.8 s plus the pause window below lets them breathe.
     "endpointing": 0.8,
     "maximum_duration_without_endpointing": 15,
     "messages_config": {"receive_partial_transcripts": True, "receive_speech_events": True},
@@ -30,83 +32,130 @@ SESSION_CONFIG = {
 }
 
 
-async def listen_once(on_partial: Callable[[str], None] | None = None) -> str:
-    """Record the mic until the first final utterance and return its text ('' on timeout)."""
-    try:
-        return await asyncio.wait_for(_listen(on_partial), TIMEOUT)
-    except TimeoutError:
-        return ""
+class Listener:
+    """One push-to-talk utterance. `on_text(text)` gets the live text (finals + current
+    partial); `on_auto_send()` fires if the person goes quiet for SILENCE_SEND seconds."""
 
+    def __init__(self, on_text: Callable[[str], None] | None = None,
+                 on_auto_send: Callable[[], None] | None = None) -> None:
+        self.on_text = on_text
+        self.on_auto_send = on_auto_send
+        self.finals: list[str] = []
+        self.partial = ""
+        self.last_words = 0.0
+        self._http: aiohttp.ClientSession | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._stream: sd.RawInputStream | None = None
+        self._tasks: list[asyncio.Task] = []
+        self._closed = asyncio.Event()
 
-async def _listen(on_partial) -> str:
-    loop = asyncio.get_running_loop()
-    frames: asyncio.Queue[bytes] = asyncio.Queue()
+    @property
+    def text(self) -> str:
+        return " ".join([*self.finals, self.partial]).strip()
 
-    def on_audio(indata, _frames, _time, _status) -> None:
-        loop.call_soon_threadsafe(frames.put_nowait, bytes(indata))
-
-    async with aiohttp.ClientSession() as http:
-        async with http.post(
-            "https://api.gladia.io/v2/live",
-            headers={"x-gladia-key": os.environ["GLADIA_API_KEY"]},
-            json=SESSION_CONFIG,
-        ) as resp:
+    async def start(self) -> None:
+        loop = asyncio.get_running_loop()
+        frames: asyncio.Queue[bytes] = asyncio.Queue()
+        self._http = aiohttp.ClientSession()
+        async with self._http.post("https://api.gladia.io/v2/live",
+                                   headers={"x-gladia-key": os.environ["GLADIA_API_KEY"]},
+                                   json=SESSION_CONFIG) as resp:
             resp.raise_for_status()
             url = (await resp.json())["url"]
+        self._ws = await self._http.ws_connect(url)
+        self._stream = sd.RawInputStream(
+            samplerate=SAMPLE_RATE, blocksize=BLOCK, channels=1, dtype="int16",
+            callback=lambda d, *_: loop.call_soon_threadsafe(frames.put_nowait, bytes(d)))
+        self._stream.start()
+        self.last_words = loop.time()
+        self._tasks = [asyncio.create_task(self._send(frames)),
+                       asyncio.create_task(self._read()),
+                       asyncio.create_task(self._watchdog())]
 
-        async with http.ws_connect(url) as ws:
-            stream = sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=BLOCK, channels=1,
-                                       dtype="int16", callback=on_audio)
-            sender = asyncio.create_task(_send_audio(ws, frames))
-            try:
-                with stream:
-                    return await _first_final(ws, on_partial)
-            finally:
-                sender.cancel()
-                await _stop(ws)
+    async def _send(self, frames: asyncio.Queue) -> None:
+        while True:
+            await self._ws.send_bytes(await frames.get())
 
-
-async def _send_audio(ws: aiohttp.ClientWebSocketResponse, frames: asyncio.Queue) -> None:
-    while True:
-        await ws.send_bytes(await frames.get())
-
-
-async def _first_final(ws: aiohttp.ClientWebSocketResponse, on_partial) -> str:
-    """Join final utterances until the person has been quiet for PAUSE seconds."""
-    finals: list[str] = []
-    loop = asyncio.get_running_loop()
-    deadline = None
-    while True:
-        timeout = None if deadline is None else max(0.05, deadline - loop.time())
+    async def _read(self) -> None:
+        loop = asyncio.get_running_loop()
         try:
-            msg = await asyncio.wait_for(ws.receive(), timeout)
-        except TimeoutError:
-            break  # quiet long enough after the last final
-        if msg.type != aiohttp.WSMsgType.TEXT:
-            break
-        data = msg.json()
-        kind = data.get("type")
-        if kind == "speech_start" and deadline is not None:
-            deadline = loop.time() + 30  # they started talking again: wait for that final
-        if kind != "transcript":
-            continue
-        text = (data["data"].get("utterance") or {}).get("text", "").strip()
-        if data["data"].get("is_final"):
-            if text:
-                finals.append(text)
-                deadline = loop.time() + PAUSE
-        elif text:
-            if deadline is not None:
-                deadline = loop.time() + PAUSE + 1
-            if on_partial:
-                on_partial(" ".join([*finals, text]))
-    return " ".join(finals)
+            async for msg in self._ws:
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    break
+                data = msg.json()
+                if data.get("type") == "speech_start":
+                    self.last_words = loop.time()
+                if data.get("type") != "transcript":
+                    continue
+                text = (data["data"].get("utterance") or {}).get("text", "").strip()
+                if data["data"].get("is_final"):
+                    if text:
+                        self.finals.append(text)
+                    self.partial = ""
+                else:
+                    self.partial = text
+                self.last_words = loop.time()
+                if self.on_text:
+                    self.on_text(self.text)
+        finally:
+            self._closed.set()
+
+    async def _watchdog(self) -> None:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        while True:
+            await asyncio.sleep(0.25)
+            quiet = loop.time() - self.last_words
+            if (self.text and quiet > SILENCE_SEND) or loop.time() - started > MAX_SECONDS:
+                if self.on_auto_send:
+                    self.on_auto_send()
+                return
+
+    async def finish(self) -> str:
+        """Send now: stop the mic, let Gladia flush its last final (≤1.5 s), return the text."""
+        self._stop_mic()
+        try:
+            if self._ws and not self._ws.closed:
+                await self._ws.send_json({"type": "stop_recording"})
+                await asyncio.wait_for(self._closed.wait(), 1.5)
+        except (TimeoutError, aiohttp.ClientError, ConnectionError):
+            pass
+        text = self.text
+        await self._close()
+        return text
+
+    async def cancel(self) -> None:
+        self._stop_mic()
+        await self._close()
+
+    def _stop_mic(self) -> None:
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        if self._tasks:
+            self._tasks[0].cancel()  # sender
+            self._tasks[2].cancel()  # watchdog
+
+    async def _close(self) -> None:
+        for t in self._tasks:
+            t.cancel()
+        try:
+            if self._ws and not self._ws.closed:
+                await asyncio.wait_for(self._ws.close(), 1)
+        except (TimeoutError, aiohttp.ClientError, ConnectionError):
+            pass
+        if self._http:
+            await self._http.close()
 
 
-async def _stop(ws: aiohttp.ClientWebSocketResponse) -> None:
+async def listen_once(on_partial: Callable[[str], None] | None = None) -> str:
+    """For scripts/try_voice.py: listen until a quiet pause, return the text."""
+    done = asyncio.Event()
+    lis = Listener(on_text=on_partial, on_auto_send=done.set)
+    await lis.start()
     try:
-        if not ws.closed:
-            await ws.send_json({"type": "stop_recording"})
-            await asyncio.wait_for(ws.close(), 2)
-    except (TimeoutError, aiohttp.ClientError, ConnectionError):
+        await asyncio.wait_for(done.wait(), MAX_SECONDS)
+    except TimeoutError:
         pass
+    return await lis.finish()

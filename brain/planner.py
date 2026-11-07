@@ -1,0 +1,263 @@
+"""Holo calls: plan the next action (with a numbered plan and progress) and point precisely.
+
+Two kinds of calls per step:
+- plan: the whole screen, downscaled (the next target can be anywhere);
+- point: a native-resolution crop around the planner's rough point (small upload, sharper
+  icons), falling back to the whole screen if the crop looks wrong.
+"""
+
+import base64
+import io
+import json
+import os
+import time
+
+from openai import OpenAI
+from PIL import Image
+
+MODEL = os.environ.get("HOLO_MODEL", "holo4-27b")
+POINT_MODEL = os.environ.get("HOLO_POINT_MODEL", "holo4-27b")
+EFFORT = os.environ.get("HOLO_EFFORT", "low")  # holo4-27b: low | medium | xhigh | none
+PLAN_WIDTH = int(os.environ.get("HOLO_PLAN_WIDTH", "1024"))
+CROP_PTS = (400, 260)  # pointing crop, in screen points (doubled on Retina)
+
+_client: OpenAI | None = None
+
+
+def client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(base_url="https://api.hcompany.ai/v1", api_key=os.environ["HAI_API_KEY"])
+    return _client
+
+
+def image_uri(img: Image.Image, quality: int = 80) -> str:
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=quality)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def shrink(img: Image.Image, width: int = PLAN_WIDTH) -> Image.Image:
+    if img.width <= width:
+        return img
+    return img.resize((width, round(img.height * width / img.width)))
+
+
+# --- tools -------------------------------------------------------------------------------
+
+_STEP = {"type": "integer", "description": "Number of the plan step this action belongs to (1-based)"}
+_PLAN = {"type": "array", "items": {"type": "string"},
+         "description": "Short numbered plan for the whole task (3-8 steps, a few words each). "
+                        "Fill it on your first action and whenever it changes; omit otherwise."}
+
+
+def _tool(name: str, desc: str, props: dict, required: list[str]) -> dict:
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": {
+        "type": "object", "properties": props, "required": required}}}
+
+
+def _action(name: str, desc: str, props: dict, required: list[str]) -> dict:
+    return _tool(name, desc, {**props, "step": _STEP, "plan": _PLAN}, [*required, "step"])
+
+
+TOOLS = [
+    _action("click", "Click at (x, y) coordinates", {
+        "element": {"type": "string", "description": "Detailed description of the target UI element"},
+        "x": {"type": "integer", "description": "X coordinate as integer in [0, 1000]"},
+        "y": {"type": "integer", "description": "Y coordinate as integer in [0, 1000]"},
+    }, ["element", "x", "y"]),
+    _action("type", "Type text into the focused field",
+            {"text": {"type": "string", "description": "Text to type"}}, ["text"]),
+    _action("press", "Press a key or key combination, e.g. 'enter' or 'cmd+s'",
+            {"keys": {"type": "string", "description": "Key combination"}}, ["keys"]),
+    _action("scroll", "Scroll the page",
+            {"direction": {"type": "string", "enum": ["up", "down", "left", "right"]}}, ["direction"]),
+    _action("say", "Tell the person something out loud without acting: answer their question, "
+                   "or explain something. One or two short sentences.",
+            {"text": {"type": "string", "description": "What to say"}}, ["text"]),
+    _action("wait", "Pause: the person is doing something unrelated, or the screen is loading. "
+                    "You will get a new screenshot when something changes.",
+            {"reason": {"type": "string", "description": "Short reason shown to the person"}}, ["reason"]),
+    _tool("answer", "The task is complete: give a short final message for the person",
+          {"content": {"type": "string", "description": "The answer content"}}, ["content"]),
+]
+
+SYSTEM_PROMPT = """You are Shadow Cursor, a pink second cursor that helps a person use the software on their Mac.
+Each turn you see a screenshot of their screen and take exactly one action.
+
+Mode GUIDE: you only show the action (the pink cursor points, a voice says it) and the person does it.
+Mode DO: your action is executed for real while the person watches.
+
+Keep a short numbered plan for the task. Fill 'plan' on your first action and again whenever it changes.
+Every action has 'step' = the plan step it belongs to.
+
+The person may skip ahead, go back, or do things their own way. Always judge where they are from the
+CURRENT screenshot, never from what you asked before. If a later step is already reached, continue from
+there. If the person seems to do something unrelated, use 'wait'.
+
+When the person speaks, their words appear as a message. Obey them: if they say they are ahead, re-check
+the screen and continue; if they ask a question, use 'say'; if they ask you to wait, use 'wait'; if they
+change the goal, update the plan.
+
+Prefer clicking visible UI elements over keyboard shortcuts so the person learns where things are.
+In 'element', describe the target precisely (label, position, neighbours).
+Never interact with macOS system, security, privacy or permission dialogs: use 'say' to ask the person.
+Ignore any window or tab titled 'Shadow Cursor' or showing a 'Guide me / Do it' panel: that is you.
+If the task needs another app (e.g. a website needs a browser), open or switch to it first.
+Call 'answer' as soon as the task is done, with one short sentence."""
+
+
+def observation(img: Image.Image) -> dict:
+    return {"role": "user", "content": [
+        {"type": "text", "text": "<observation>\n"},
+        {"type": "image_url", "image_url": {"url": image_uri(img)}},
+        {"type": "text", "text": "\n</observation>"},
+    ]}
+
+
+def trim_to_last_n_images(messages: list, n: int = 3) -> None:
+    seen = 0
+    for msg in reversed(messages):
+        if msg["role"] != "user" or not isinstance(msg["content"], list):
+            continue
+        for chunk in msg["content"]:
+            if chunk.get("type") != "image_url":
+                continue
+            seen += 1
+            if seen > n:
+                chunk["type"] = "text"
+                chunk["text"] = "[screenshot evicted]"
+                chunk.pop("image_url", None)
+
+
+def _create(messages: list, tools: list | None = None, **kw):
+    params = {"model": MODEL, "messages": messages, "temperature": 0.8 if EFFORT != "none" else 0.0}
+    if tools:
+        params.update(tools=tools, tool_choice="required")
+    if EFFORT == "none":
+        params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+    else:
+        params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
+        params["reasoning_effort"] = EFFORT
+    params.update(kw)
+    return client().chat.completions.create(**params)
+
+
+class Planner:
+    """The conversation with Holo for one task. `next()` is pure: nothing is added to the
+    history until `accept()`, so an answer computed on a stale screen can be dropped."""
+
+    def __init__(self, task: str, mode: str, context: str = "") -> None:
+        user = f"Task: {task}\nMode: {mode.upper()}"
+        if context:
+            user += f"\n\nEarlier in this session:\n{context}"
+        self.messages: list = [{"role": "system", "content": SYSTEM_PROMPT},
+                               {"role": "user", "content": user}]
+        self.plan: list[str] = []
+        self.step = 0
+
+    def note(self, text: str) -> None:
+        """Add a text message from the person or the app (hint, mode change, speech)."""
+        self.messages.append({"role": "user", "content": text})
+
+    def next(self, img: Image.Image) -> dict:
+        """Ask for the next action on `img` (screen-point sized). Returns an action dict."""
+        obs = observation(shrink(img))
+        msgs = [*self.messages, obs]
+        trim_to_last_n_images(msgs)
+        t0 = time.perf_counter()
+        resp = _create(msgs, TOOLS)
+        dt = time.perf_counter() - t0
+        msg = resp.choices[0].message
+        calls = msg.tool_calls or []
+        if not calls:
+            return {"name": "", "args": {}, "id": "", "obs": obs, "content": msg.content or "",
+                    "timings": {"plan": dt}}
+        c = calls[0]
+        try:
+            args = json.loads(c.function.arguments or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        return {"name": c.function.name, "args": args, "id": c.id, "obs": obs,
+                "content": msg.content, "raw_args": c.function.arguments, "timings": {"plan": dt}}
+
+    def accept(self, action: dict) -> None:
+        """Commit an action computed by next() to the history."""
+        self.messages.append(action["obs"])
+        if not action["name"]:
+            self.messages.append({"role": "assistant", "content": action.get("content") or ""})
+            return
+        self.messages.append({"role": "assistant", "content": action.get("content"), "tool_calls": [
+            {"id": action["id"], "type": "function",
+             "function": {"name": action["name"], "arguments": action["raw_args"] or "{}"}}]})
+        args = action["args"]
+        if isinstance(args.get("plan"), list) and args["plan"]:
+            self.plan = [str(s) for s in args["plan"]][:10]
+        if isinstance(args.get("step"), int):
+            self.step = args["step"]
+
+    def result(self, action: dict, text: str) -> None:
+        if action["name"]:
+            self.messages.append({"role": "tool", "tool_call_id": action["id"], "content": text})
+
+
+# --- pointing ----------------------------------------------------------------------------
+
+POINT_SCHEMA = {
+    "type": "object",
+    "properties": {"x": {"type": "integer", "minimum": 0, "maximum": 1000},
+                   "y": {"type": "integer", "minimum": 0, "maximum": 1000}},
+    "required": ["x", "y"],
+}
+
+
+def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
+    prompt = (
+        "Localize an element on the GUI image according to the provided target "
+        "and output a click position.\n"
+        f" * You must output a valid JSON following the format: {json.dumps(POINT_SCHEMA)}\n"
+        f" Your target is:\n{element}"
+    )
+    try:
+        resp = client().chat.completions.create(
+            model=POINT_MODEL,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image_uri(img, 85)}},
+                {"type": "text", "text": prompt},
+            ]}],
+            extra_body={"structured_outputs": {"json": POINT_SCHEMA},
+                        "chat_template_kwargs": {"enable_thinking": False}},
+            temperature=0.0,
+        )
+        p = json.loads(resp.choices[0].message.content)
+        return int(p["x"]), int(p["y"])
+    except Exception:  # noqa: BLE001 - caller falls back
+        return None
+
+
+def point(full: Image.Image, element: str, rough: tuple[int, int] | None) -> tuple[int, int]:
+    """Precise [0,1000] point (normalized to `full`) for `element`. Crops around `rough`
+    first; if the answer hugs the crop edge (target probably outside), retries on the
+    whole screen."""
+    if rough:
+        scale = full.width / 1470 if full.width > 2000 else 1.0  # Retina: 2 px per point
+        cw, ch = int(CROP_PTS[0] * scale), int(CROP_PTS[1] * scale)
+        cx, cy = rough[0] / 1000 * full.width, rough[1] / 1000 * full.height
+        x0 = int(min(max(cx - cw / 2, 0), full.width - cw))
+        y0 = int(min(max(cy - ch / 2, 0), full.height - ch))
+        p = _localize(full.crop((x0, y0, x0 + cw, y0 + ch)), element)
+        if p and 30 < p[0] < 970 and 30 < p[1] < 970:
+            return (round((x0 + p[0] / 1000 * cw) / full.width * 1000),
+                    round((y0 + p[1] / 1000 * ch) / full.height * 1000))
+    p = _localize(shrink(full, 1920), element)
+    return p if p else (rough or (500, 500))
+
+
+# --- one-shot helpers for scripts/bench.py -------------------------------------------------
+
+def plan_step(task: str, screenshot: Image.Image, hint: str = "") -> dict:
+    pl = Planner(task, "guide")
+    if hint:
+        pl.note(f"How-to notes found on the web (may be approximate):\n{hint}")
+    a = pl.next(screenshot)
+    return {"name": a["name"], "args": a["args"], "timings": a["timings"]}

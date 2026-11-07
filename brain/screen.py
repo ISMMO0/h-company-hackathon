@@ -89,6 +89,29 @@ def frontmost_app() -> str:
     return ""
 
 
+def front_window() -> tuple[str, str]:
+    """(app, window title) of the topmost normal window. A change means the person moved on
+    (switched app, opened a page) even if the pixels barely changed."""
+    windows = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID)
+    for w in windows:
+        name = w.get("kCGWindowOwnerName", "")
+        if w.get("kCGWindowLayer", 0) == 0 and w.get("kCGWindowAlpha", 1) > 0 and \
+                name not in ("Electron", "Window Server", "Dock"):
+            return name, w.get("kCGWindowName", "") or ""
+    return "", ""
+
+
+def seconds_since_input() -> tuple[float, float]:
+    """(seconds since the last mouse click, seconds since the last key press), system-wide.
+    Catches clicks too quick for polling the button state."""
+    src = Quartz.kCGEventSourceStateCombinedSessionState
+    click = Quartz.CGEventSourceSecondsSinceLastEventType(src, Quartz.kCGEventLeftMouseDown)
+    key = Quartz.CGEventSourceSecondsSinceLastEventType(src, Quartz.kCGEventKeyDown)
+    return click, key
+
+
 def window_owner_at(x: float, y: float) -> str:
     """Name of the app whose window is topmost at (x, y), in global points."""
     windows = Quartz.CGWindowListCopyWindowInfo(
