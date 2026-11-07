@@ -1,0 +1,3 @@
+hai-agents[cli]
+python-dotenv
+requests

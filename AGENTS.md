@@ -8,6 +8,12 @@ Goal: an agent that operates real software (websites, desktop apps) to complete 
 real-world task. The demo must show the problem, the actions the agent takes, and the result.
 Full brief: [HACKATHON_BRIEF.md](HACKATHON_BRIEF.md). Hard deadline: Sun Nov 8, 14:00.
 
+## Current direction (read before every task)
+We are building **Shadow Cursor**: a pink second cursor on macOS that, on voice command,
+guides the user through any app (GUIDE mode) or does the task while they watch (DO mode).
+The full plan is in [PLAN.md](PLAN.md); recent decisions are in [DECISIONS.md](DECISIONS.md).
+Both files are kept up to date; trust them over older PR descriptions.
+
 ## Stack
 - Python 3.11+
 - H Company Agents API via `hai-agents` (`pip install "hai-agents[cli]"`).
@@ -23,3 +29,4 @@ Full brief: [HACKATHON_BRIEF.md](HACKATHON_BRIEF.md). Hard deadline: Sun Nov 8, 
 - Every PR: short description of what changed and how to run/test it.
 - Do not add AI attribution (no "Co-Authored-By" or "Generated with" lines) to commits or PRs.
 - Prefer simple, readable code over abstractions; this is a 2-day hackathon.
+- UI must be as simple and clean as possible: minimal, no extra features or polish unless asked.
