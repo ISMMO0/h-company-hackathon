@@ -8,9 +8,10 @@ import os
 from openai import OpenAI
 from PIL import Image
 
-MODEL = os.environ.get("HOLO_MODEL", "holo4-35b-a3b")
-# Thinking off measured ~0.5-0.9 s/step vs ~1.6-3 s with it on, same picks on simple tasks.
-THINKING = os.environ.get("HOLO_THINKING", "0") == "1"
+MODEL = os.environ.get("HOLO_MODEL", "holo4-27b")
+# Measured on this Mac: holo4-27b + thinking ≈ 1-1.5 s/step and plans correctly (e.g. selects
+# text before formatting); with thinking off it is faster but skips steps.
+THINKING = os.environ.get("HOLO_THINKING", "1") == "1"
 
 _client: OpenAI | None = None
 
