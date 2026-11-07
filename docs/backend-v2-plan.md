@@ -1,6 +1,6 @@
 # Backend v2 plan: fast and smart
 
-Status: **approved Sat 14:15, in progress.** Fallback for the pitch: tag `v1-demo`.
+Status: **shipped Sat 15:00**, waiting for the team lead's live tests. Fallback for the pitch: tag `v1-demo`.
 
 ## Goals
 1. **Fast**: under ~1.5 s from "screen changed" to "pink cursor on the next target".

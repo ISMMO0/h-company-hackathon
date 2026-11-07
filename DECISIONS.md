@@ -2,6 +2,13 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 15:00** Backend v2 shipped (brain/agent.py, planner.py, voice.py; memory.py + bench by
+  Devin; overlay v4 by Devin). Bench on a real screenshot: plan p50 0.8 s, point 0.43 s
+  (crop), total ~1.3 s/step, 3/3 hits (was 2.4-2.8 s). Planner: holo4-27b, thinking effort
+  "low", 1024 px shot; pointer: 400x260 pt native crop, full-screen fallback. Stale answers
+  are dropped on click / key / window switch / speech. Watching uses system input timers
+  (catches quick clicks and typing) + pixel diffs (switched off when something animates).
+  Set SHADOW_SAVE_FIXTURES=1 to save screenshots for the bench (kept local, gitignored).
 - **Sat 14:15** Backend v2 approved (docs/backend-v2-plan.md), fallback tag `v1-demo`:
   measure per stage; planner on a small full-screen shot, pointer on a native-res crop around
   the rough point; the model keeps a numbered plan and reports progress so users can skip
