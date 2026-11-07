@@ -2,6 +2,12 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 14:15** Backend v2 approved (docs/backend-v2-plan.md), fallback tag `v1-demo`:
+  measure per stage; planner on a small full-screen shot, pointer on a native-res crop around
+  the rough point; the model keeps a numbered plan and reports progress so users can skip
+  ahead; new `say`/`wait` tools; stale answers dropped when the screen changes; push-to-talk
+  with live text (⌃⌥Space start/send, ⌃⌥X cancel), talking never stops a task; session
+  memory. Overlay side follows protocol v4.
 - **Sat 14:00** Controls that always work: a menu bar icon (pink dot: Talk, Stop, show/hide the
   idle pink cursor, step log, Quit) and a global stop shortcut **Control+Option+X**.
 - **Sat 13:45** After the team lead's YouTube test:

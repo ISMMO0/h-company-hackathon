@@ -1,4 +1,4 @@
-# Overlay ⇄ brain protocol (v3)
+# Overlay ⇄ brain protocol (v4)
 
 The Python **brain** (`brain/`) runs one local server on `127.0.0.1:8765`:
 - `http://127.0.0.1:8765/` — the control page (text box, mode, Go/Stop, step log).
@@ -12,11 +12,12 @@ primary display. The brain does all pixel ↔ point conversion.
 | Message | Meaning |
 |---|---|
 | `{"type":"cursor","x":512,"y":300,"label":"Click File"}` | Show the pink cursor and glide it (≈400 ms ease) to (x, y). `label` is a short hint shown in a small bubble next to it. |
-| `{"type":"step","text":"Click the search box","mode":"guide","state":"waiting"}` | Update the **panel** (see below). `mode`: `"guide"` or `"do"`. `state`: `"thinking"` (Holo is working), `"waiting"` (the user's turn), `"acting"` (DO mode is clicking), `"done"` (task finished, `text` is the final message). |
+| `{"type":"step","text":"Click the search box","mode":"guide","state":"waiting"}` | Update the **panel** (see below). `mode`: `"guide"` or `"do"`. `state`: `"thinking"` (Holo is working), `"waiting"` (the user's turn), `"acting"` (DO mode is clicking), `"paused"` (the user is doing something else; `text` says why), `"done"` (task finished, `text` is the final message). |
 | `{"type":"hide"}` | Hide everything immediately (used right before a screenshot). Reply `{"type":"hidden"}` once the window is actually hidden (next frame). |
 | `{"type":"show"}` | Show the cursor and panel again. |
 | `{"type":"clear"}` | Task finished or stopped: hide cursor, bubble and panel. |
-| `{"type":"listening","on":true}` | Show a small pink pulsing dot with "Listening…" next to the user's real mouse position (read when the message arrives). `"on":false` hides it. While a task runs, show the dot inside the panel instead. |
+| `{"type":"listening","on":true}` | **Push-to-talk opened.** Open the panel (at the user's mouse if no task runs, else where it is) in *listening* mode: pulsing pink dot, "Listening… ⌃⌥Space to send · ⌃⌥X to cancel", and an empty live-text area. `"on":false` closes listening mode (back to the step, or closes the panel if no task runs). |
+| `{"type":"transcript","text":"show me how to"}` | Live words while listening (replace the live-text area; partials and finals already joined by the brain). |
 | `{"type":"plan","steps":[{"text":"Click the search bar","status":"done"}, …]}` | Full step list for the **details** view. `status`: `"done"` (✓), `"current"` (highlighted), `"todo"` (muted). Sent whenever it changes; always the whole list. |
 | `{"type":"chat","who":"you","text":"Actually search for MKBHD"}` | One line of conversation for the details view (`who`: `"you"` or `"shadow"`). Append; `clear` empties it. |
 
@@ -26,11 +27,11 @@ primary display. The brain does all pixel ↔ point conversion.
 |---|---|
 | `{"type":"hello"}` | Sent on connect. |
 | `{"type":"hidden"}` | Ack for `hide`. |
-| `{"type":"hotkey"}` | The user pressed the global hotkey (`Control+Alt+Space`). Brain listens. If a task runs, what the user says is added to it **without stopping it** (saying "stop" stops). |
+| `{"type":"hotkey"}` | ⌃⌥Space. **Toggle**: if not listening → start listening; if listening → **send now** what was said. Talking during a task never stops it; the model decides what the words mean (stop, I'm ahead, wait, question, switch mode, new info). |
 | `{"type":"next"}` | Panel **Next** button: "I did it / skip": the brain re-checks the screen now. |
 | `{"type":"mode","mode":"do"}` | Panel mode toggle (**Guide** ⇄ **Do it**), takes effect on the next step. |
 | `{"type":"mic"}` | Panel mic button: same as the hotkey. |
-| `{"type":"stop"}` | Panel **×** button: stop the task. |
+| `{"type":"stop"}` | Panel **×**, menu bar Stop or ⌃⌥X. If listening: **cancel** the utterance only. Otherwise stop the task. |
 
 ## The panel
 
@@ -38,6 +39,11 @@ A small card that sits next to the pink cursor and follows it, shown only while 
 It holds the current instruction (`step.text`), a tiny state line, and four buttons:
 **Next**, **Guide/Do it** toggle, **mic**, **×**. A chevron collapses it to just the pink cursor
 and bubble. The overlay stays click-through everywhere except over the panel.
+
+### Listening and paused
+While listening, the panel shows the live text (wraps, grows up to ~5 lines) and replaces the
+buttons row with two: **Send** (= hotkey) and **Cancel** (= stop). In `paused` state the
+state line reads "Paused" and the panel is dimmed; it un-dims on the next step.
 
 ### Details view
 A small **Details** button on the panel opens a taller card under it: the `plan` list (✓ done,
