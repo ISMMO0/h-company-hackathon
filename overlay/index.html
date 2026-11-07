@@ -25,6 +25,7 @@
     display: block;
     width: 24px;
     height: 24px;
+    margin: -2px 0 0 -3px; /* the arrow tip is at (3,2) in the drawing: put it exactly on (x,y) */
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
   }
   #label {
@@ -39,20 +40,25 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
   #label:empty { display: none; }
-  #card {
+  #box {
     position: absolute;
     left: 26px;
     top: 52px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     width: max-content;
     max-width: 280px;
+  }
+  #panel.flip-x #box { left: auto; right: 10px; }
+  #panel.flip-y #box { top: auto; bottom: 10px; }
+  #card, #details {
     padding: 8px 10px;
     border-radius: 10px;
     background: rgba(20, 20, 24, 0.9);
     color: #fff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
-  #panel.flip-x #card { left: auto; right: 10px; }
-  #panel.flip-y #card { top: auto; bottom: 10px; }
   #card .row { display: flex; align-items: flex-start; gap: 8px; }
   #text {
     flex: 1;
@@ -63,6 +69,9 @@
     overflow-wrap: anywhere;
   }
   #state {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin-top: 4px;
     font-size: 11px;
     color: rgba(255, 255, 255, 0.55);
@@ -90,6 +99,26 @@
   #card.collapsed #text, #card.collapsed #state, #card.collapsed #buttons { display: none; }
   #card.collapsed #chevron svg { transform: rotate(-90deg); }
   #stop { font-size: 15px; }
+  #details-button.on { background: rgba(255, 62, 165, 0.35); }
+  #details {
+    max-height: 320px;
+    overflow-y: auto;
+    font-size: 12px;
+  }
+  #details.hidden, #card.collapsed ~ #details { display: none; }
+  #plan .step {
+    padding: 3px 0 3px 8px;
+    border-left: 2px solid transparent;
+    color: rgba(255, 255, 255, 0.5);
+    overflow-wrap: anywhere;
+  }
+  #plan .step.current { border-left-color: #ff3ea5; color: #fff; }
+  #plan .step.done::before { content: '✓ '; }
+  #chat { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  #chat:empty, #plan:empty + #chat { margin-top: 0; padding-top: 0; border-top: 0; }
+  #chat .line { padding: 2px 0; overflow-wrap: anywhere; }
+  #chat .who { color: rgba(255, 255, 255, 0.5); margin-right: 5px; }
+  #chat .shadow .who { color: #ff3ea5; }
   #listening {
     position: absolute;
     left: 0;
@@ -105,13 +134,14 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
   #listening.hidden { display: none; }
-  #listening .dot {
+  .dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
     background: #ff3ea5;
     animation: pulse 1s ease-in-out infinite;
   }
+  #state .dot { width: 8px; height: 8px; }
   @keyframes pulse {
     0%, 100% { transform: scale(0.8); opacity: 0.6; }
     50% { transform: scale(1.2); opacity: 1; }
@@ -127,17 +157,24 @@
   <div id="label"></div>
 </div>
 <div id="panel" class="hidden">
-  <div id="card">
-    <div class="row">
-      <div id="text"></div>
-      <button id="chevron" title="Collapse"><svg viewBox="0 0 12 12"><path d="M2 4l4 4 4-4"/></svg></button>
+  <div id="box">
+    <div id="card">
+      <div class="row">
+        <div id="text"></div>
+        <button id="chevron" title="Collapse"><svg viewBox="0 0 12 12"><path d="M2 4l4 4 4-4"/></svg></button>
+      </div>
+      <div id="state"></div>
+      <div id="buttons">
+        <button id="next" title="I did it / skip">Next</button>
+        <button id="mode" title="Switch mode">Guide</button>
+        <button id="mic" title="Talk"><svg viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="7" rx="2"/><path d="M2 6a4 4 0 0 0 8 0M6 10v1.5"/></svg></button>
+        <button id="details-button" title="All steps and conversation">Details</button>
+        <button id="stop" title="Stop">×</button>
+      </div>
     </div>
-    <div id="state"></div>
-    <div id="buttons">
-      <button id="next" title="I did it / skip">Next</button>
-      <button id="mode" title="Switch mode">Guide</button>
-      <button id="mic" title="Talk"><svg viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="7" rx="2"/><path d="M2 6a4 4 0 0 0 8 0M6 10v1.5"/></svg></button>
-      <button id="stop" title="Stop">×</button>
+    <div id="details" class="hidden">
+      <div id="plan"></div>
+      <div id="chat"></div>
     </div>
   </div>
 </div>
@@ -146,28 +183,72 @@
   const cursor = document.getElementById('cursor');
   const label = document.getElementById('label');
   const panel = document.getElementById('panel');
+  const box = document.getElementById('box');
   const card = document.getElementById('card');
   const text = document.getElementById('text');
   const state = document.getElementById('state');
   const modeButton = document.getElementById('mode');
+  const detailsButton = document.getElementById('details-button');
+  const details = document.getElementById('details');
+  const plan = document.getElementById('plan');
+  const chat = document.getElementById('chat');
   const listening = document.getElementById('listening');
 
   const STATES = { thinking: 'Thinking…', waiting: 'Your turn', acting: 'Doing it…', done: 'Done' };
+  const WHO = { you: 'You', shadow: 'Shadow' };
   const PANEL_W = 320; // card max width + offset, used to keep it on screen
-  const PANEL_H = 140;
+  const CHAT_KEEP = 20;
+  const CHAT_SHOW = 6;
   let mode = 'guide';
   let panelOn = false;
   let doneTimer = null;
+  let panelPos = { x: 0, y: 0 };
+  let stateText = '';
+  let listeningOn = false;
+  let chatLines = [];
 
   function place(x, y) {
+    panelPos = { x, y };
     panel.style.transform = `translate(${x}px, ${y}px)`;
     panel.classList.toggle('flip-x', x + PANEL_W > innerWidth);
-    panel.classList.toggle('flip-y', y + PANEL_H > innerHeight);
+    panel.classList.toggle('flip-y', y + 60 + box.offsetHeight > innerHeight);
   }
 
   function setMode(next) {
     mode = next;
     modeButton.textContent = mode === 'do' ? 'Do it' : 'Guide';
+  }
+
+  // The state line shows the listening dot while the brain listens during a task.
+  function renderState() {
+    state.textContent = stateText;
+    if (listeningOn && panelOn) {
+      state.innerHTML = '<span class="dot"></span>Listening…';
+    }
+  }
+
+  function renderPlan(steps) {
+    plan.innerHTML = '';
+    for (const step of steps) {
+      const div = document.createElement('div');
+      div.className = `step ${step.status || 'todo'}`;
+      div.textContent = step.text || '';
+      plan.appendChild(div);
+    }
+  }
+
+  function renderChat() {
+    chat.innerHTML = '';
+    for (const line of chatLines.slice(-CHAT_SHOW)) {
+      const div = document.createElement('div');
+      div.className = `line ${line.who}`;
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = WHO[line.who] || line.who;
+      div.append(who, line.text);
+      chat.appendChild(div);
+    }
+    chat.scrollTop = chat.scrollHeight;
   }
 
   function hidePanel() {
@@ -177,8 +258,8 @@
     window.overlay.interactive(false);
   }
 
-  card.addEventListener('mouseenter', () => window.overlay.interactive(true));
-  card.addEventListener('mouseleave', () => window.overlay.interactive(false));
+  box.addEventListener('mouseenter', () => window.overlay.interactive(true));
+  box.addEventListener('mouseleave', () => window.overlay.interactive(false));
   document.getElementById('chevron').addEventListener('click', () => card.classList.toggle('collapsed'));
   document.getElementById('next').addEventListener('click', () => window.overlay.send({ type: 'next' }));
   document.getElementById('mic').addEventListener('click', () => window.overlay.send({ type: 'mic' }));
@@ -187,10 +268,21 @@
     setMode(mode === 'do' ? 'guide' : 'do');
     window.overlay.send({ type: 'mode', mode });
   });
+  detailsButton.addEventListener('click', () => {
+    const on = details.classList.toggle('hidden') === false;
+    detailsButton.classList.toggle('on', on);
+    place(panelPos.x, panelPos.y);
+  });
 
   window.overlay.onMessage((msg) => {
     switch (msg.type) {
+      case 'follow':
+        cursor.style.transition = msg.glide ? '' : 'none';
+        cursor.style.transform = `translate(${msg.x}px, ${msg.y}px)`;
+        cursor.classList.remove('hidden');
+        break;
       case 'cursor':
+        cursor.style.transition = '';
         cursor.style.transform = `translate(${msg.x}px, ${msg.y}px)`;
         place(msg.x, msg.y);
         label.textContent = msg.label || '';
@@ -199,12 +291,20 @@
       case 'step':
         if (msg.x !== undefined) place(msg.x, msg.y);
         text.textContent = msg.text || '';
-        state.textContent = STATES[msg.state] || '';
+        stateText = STATES[msg.state] || '';
         if (msg.mode) setMode(msg.mode);
         panelOn = true;
+        renderState();
         panel.classList.remove('hidden');
         clearTimeout(doneTimer);
         if (msg.state === 'done') doneTimer = setTimeout(hidePanel, 6000);
+        break;
+      case 'plan':
+        renderPlan(msg.steps || []);
+        break;
+      case 'chat':
+        chatLines = chatLines.concat({ who: msg.who || 'shadow', text: msg.text || '' }).slice(-CHAT_KEEP);
+        renderChat();
         break;
       case 'hide':
         cursor.classList.add('hidden');
@@ -217,16 +317,21 @@
         if (panelOn) panel.classList.remove('hidden');
         break;
       case 'clear':
-        cursor.classList.add('hidden');
+        if (!msg.keepCursor) cursor.classList.add('hidden');
         label.textContent = '';
+        chatLines = [];
+        renderPlan([]);
+        renderChat();
         hidePanel();
         break;
       case 'listening':
-        if (msg.on) {
-          listening.style.left = `${msg.x + 18}px`;
-          listening.style.top = `${msg.y + 18}px`;
+        listeningOn = Boolean(msg.on);
+        if (msg.x !== undefined) {
+          listening.style.left = `${msg.x + 42}px`;
+          listening.style.top = `${msg.y + 38}px`;
         }
-        listening.classList.toggle('hidden', !msg.on);
+        listening.classList.toggle('hidden', !(listeningOn && msg.x !== undefined));
+        renderState();
         break;
     }
   });

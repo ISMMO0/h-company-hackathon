@@ -6,10 +6,19 @@ const BRAIN_URL = 'ws://127.0.0.1:8765/ws/overlay';
 const RECONNECT_MS = 1000;
 const HOTKEY = 'Control+Alt+Space';
 
+const FOLLOW_MS = 16; // ~60 fps
+const FOLLOW_OFFSET = 16;
+const GLIDE_MS = 400;
+
 let windows = []; // one per display, same order as screen.getAllDisplays()
 let lastCursor = null; // { x, y, label } in global screen points
 let lastStep = null;
+let hidden = false;
 let socket = null;
+let cursorWin = null; // the window currently drawing the pink cursor
+let followTimer = null; // idle follow (see below)
+let lastFollow = null;
+let glideUntil = 0;
 
 function createWindow(display) {
   const win = new BrowserWindow({
@@ -39,12 +48,14 @@ function createWindow(display) {
   win.setBounds(display.bounds);
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => win.showInactive());
+  win.webContents.on('did-finish-load', () => { lastFollow = null; });
   win.display = display;
   return win;
 }
 
 function rebuildWindows() {
   for (const win of windows) win.destroy();
+  cursorWin = null;
   windows = screen.getAllDisplays().map(createWindow);
   if (lastCursor) {
     const win = windows[0];
@@ -64,9 +75,43 @@ function broadcast(msg) {
   for (const win of windows) win.webContents.send('brain', msg);
 }
 
+// Idle follow: while no task runs the pink cursor sits next to the real mouse and tracks it.
+function followTick() {
+  if (hidden) return;
+  const { x, y } = screen.getCursorScreenPoint();
+  if (lastFollow && lastFollow.x === x && lastFollow.y === y) return;
+  lastFollow = { x, y };
+  const win = displayWindowFor(x, y);
+  if (cursorWin && cursorWin !== win && !cursorWin.isDestroyed()) {
+    cursorWin.webContents.send('brain', { type: 'clear' });
+  }
+  cursorWin = win;
+  const { x: ox, y: oy } = win.display.bounds;
+  win.webContents.send('brain', {
+    type: 'follow',
+    x: x - ox + FOLLOW_OFFSET,
+    y: y - oy + FOLLOW_OFFSET,
+    glide: Date.now() < glideUntil,
+  });
+}
+
+function startFollow(glide) {
+  if (followTimer) return;
+  glideUntil = glide ? Date.now() + GLIDE_MS : 0;
+  lastFollow = null;
+  followTimer = setInterval(followTick, FOLLOW_MS);
+}
+
+function stopFollow() {
+  clearInterval(followTimer);
+  followTimer = null;
+}
+
 function moveCursor({ x, y, label }) {
+  stopFollow();
   lastCursor = { x, y, label };
   const win = displayWindowFor(x, y);
+  cursorWin = win;
   const { x: ox, y: oy } = win.display.bounds;
   for (const other of windows) {
     if (other !== win) other.webContents.send('brain', { type: 'clear' });
@@ -76,6 +121,7 @@ function moveCursor({ x, y, label }) {
 
 // The panel follows the pink cursor; before the first cursor it opens at the user's mouse.
 function showStep(msg) {
+  stopFollow();
   lastStep = msg;
   let win;
   let step = { type: 'step', text: msg.text || '', mode: msg.mode, state: msg.state };
@@ -93,9 +139,10 @@ function showStep(msg) {
   win.webContents.send('brain', step);
 }
 
+// While a task runs the panel shows the dot; otherwise a pill next to the real mouse.
 function setListening(on) {
-  if (!on) {
-    broadcast({ type: 'listening', on: false });
+  if (!on || lastCursor || lastStep) {
+    broadcast({ type: 'listening', on });
     return;
   }
   const { x, y } = screen.getCursorScreenPoint();
@@ -136,19 +183,27 @@ function handleMessage(msg) {
       showStep(msg);
       break;
     case 'hide':
+      hidden = true;
       pendingHidden = windows.length;
       broadcast({ type: 'hide' });
       break;
     case 'show':
+      hidden = false;
+      lastFollow = null;
       broadcast({ type: 'show' });
       break;
     case 'clear':
       lastCursor = null;
       lastStep = null;
-      broadcast({ type: 'clear' });
+      broadcast({ type: 'clear', keepCursor: true }); // it glides back to the mouse
+      startFollow(true);
       break;
     case 'listening':
       setListening(Boolean(msg.on));
+      break;
+    case 'plan':
+    case 'chat':
+      broadcast(msg);
       break;
     default:
       break;
@@ -175,6 +230,7 @@ function connect() {
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
   rebuildWindows();
+  startFollow(false);
   screen.on('display-added', rebuildWindows);
   screen.on('display-removed', rebuildWindows);
   screen.on('display-metrics-changed', rebuildWindows);
