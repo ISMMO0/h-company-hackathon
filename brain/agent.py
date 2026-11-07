@@ -471,7 +471,7 @@ class Agent:
         last_step = 0
         actions = 0
         pixel_stales = 0  # at most one "screen still changing" re-plan per step (videos animate)
-        same_step, last_scroll = 0, ""
+        same_step, last_scroll, prev_thumb = 0, "", None
 
         for _turn in range(MAX_TURNS):
             if self.stopped or actions >= MAX_ACTIONS:
@@ -552,12 +552,15 @@ class Agent:
             actions += 1
             pixel_stales = 0
             # No progress: 5 actions on the same plan step, or scrolling back and forth.
-            same_step = 0 if moved or name in ("say", "wait") else same_step + 1
+            thumb = full.convert("L").resize((240, 156))
+            unchanged = prev_thumb is not None and not screen.changed(prev_thumb, thumb)
+            prev_thumb = thumb
+            same_step = same_step + 1 if unchanged and not moved and name not in ("say", "wait") else 0
             flip = name == "scroll" and last_scroll and args.get("direction") != last_scroll
             last_scroll = args.get("direction", "") if name == "scroll" else last_scroll
             t1 = time.perf_counter()
-            if (repeats >= 2 or same_step >= 5 or flip) and name not in ("wait", "say"):
-                same_step, last_scroll = 0, ""
+            if (repeats >= 2 or same_step >= 3 or flip) and name not in ("wait", "say"):
+                same_step, last_scroll, prev_thumb = 0, "", None
                 result = await self.stuck(pl, args)
                 repeats = 0
             else:
@@ -642,7 +645,7 @@ class Agent:
 
         if self.mode == "do":
             await self.panel(label, "acting", why)
-            await asyncio.sleep(0.7 if point else 0.3)
+            await asyncio.sleep(0.45 if point else 0.15)
             if name == "click":
                 await asyncio.to_thread(screen.click, *point)
             elif name == "double_click":
@@ -660,7 +663,7 @@ class Agent:
                 await asyncio.to_thread(screen.press, args.get("keys", ""))
             elif name == "scroll":
                 await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
-            await asyncio.sleep(0.6)  # let the app react
+            await asyncio.sleep(0.4)  # let the app react
             return "Done.", "did"
 
         await self.panel(label, "waiting", why)

@@ -90,6 +90,8 @@ If a task IS running, intent is one of:
   talking to someone else, background noise words ("you", "so"). NEVER "ignore" anything that reports
   progress ("I clicked it"), a problem ("it's not synced", "nothing happened"), a doubt or a question:
   progress → "ahead", problem/doubt → "update" (put the problem in "task"), question → "question".
+  Words unrelated to the task and to the screen (TV, music lyrics, someone else talking: "there's a block of
+  a gas station") are "ignore", never "update".
 "reply" is a very short spoken acknowledgement (max 6 words, same language as the person)."""
 
 

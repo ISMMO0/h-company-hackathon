@@ -91,8 +91,10 @@ TOOLS = [
         "to_x": {"type": "integer", "description": "Drop X in [0, 1000]"},
         "to_y": {"type": "integer", "description": "Drop Y in [0, 1000]"},
     }, ["element", "x", "y", "to_element", "to_x", "to_y"]),
-    _action("type", "Type text into a field or cell (it is clicked first if needed)", {
-        "text": {"type": "string", "description": "Text to type"},
+    _action("type", "Type text into a field or cell (it is clicked first if needed). In DO mode, type a "
+                    "whole row or form at once: '\t' moves to the next cell/field, '\n' presses Return "
+                    "(e.g. 'Pizza\t4\t12\n').", {
+        "text": {"type": "string", "description": "Text to type; \t = Tab, \n = Return"},
         "element": {"type": "string", "description": "The field or cell to type into, e.g. 'cell A1'"},
         "x": {"type": "integer", "description": "X in [0, 1000] of that field"},
         "y": {"type": "integer", "description": "Y in [0, 1000] of that field"},

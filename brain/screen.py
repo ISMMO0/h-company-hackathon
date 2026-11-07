@@ -170,7 +170,12 @@ def drag(x0: float, y0: float, x1: float, y1: float, steps: int = 20) -> None:
 
 
 def type_text(text: str) -> None:
+    """Types text; '\t' presses Tab and '\n' presses Return, so a whole table row is one action."""
     for ch in text:
+        if ch in "\t\n":
+            press("tab" if ch == "\t" else "enter")
+            time.sleep(0.05)
+            continue
         for down in (True, False):
             ev = Quartz.CGEventCreateKeyboardEvent(None, 0, down)
             Quartz.CGEventKeyboardSetUnicodeString(ev, len(ch), ch)
