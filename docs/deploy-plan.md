@@ -1,6 +1,6 @@
 # Deploy plan: the jury installs and uses Shadow Cursor
 
-Status: **draft for Devin's review, nothing deployed yet** (team lead: "don't deploy yet").
+Status: **v2, reviewed by Devin (Sat 22:25), waiting for the team lead's approval. Nothing deployed.**
 
 ## The constraint that changes everything
 The jury will **use our app themselves**, on their own Mac. So it's not enough to run it on ours:
@@ -87,3 +87,43 @@ The jury will **use our app themselves**, on their own Mac. So it's not enough t
 
 ## Not now
 Deploying anything (team lead's call). Windows/Linux. Auto-update.
+
+## Devin's review (Sat 22:25): what changes
+- **Gatekeeper on macOS 15+:** right-click → Open no longer works. Path for jurors: double-click →
+  "Not opened" → System Settings › Privacy & Security › **Open Anyway**. 15-second GIF on the landing
+  page. **Ad-hoc sign** the whole bundle (`codesign --force --deep -s -`): fully unsigned shows "damaged".
+- **Permissions:** the brain spawned by Electron inherits the app as "responsible process", so Screen
+  Recording, Accessibility and Mic all go to Shadow Cursor.app. Needs `NSMicrophoneUsageDescription`
+  in Info.plist (else macOS kills the brain on first mic use). Check status from Electron
+  (`systemPreferences`); Screen Recording needs an app restart.
+- **PyInstaller:** realistic (1–2 h) in **one-folder** mode, arm64 only, Python 3.12. Traps:
+  `brain.tts` launched with `-m` breaks once frozen (make it a thread or an argv mode), PortAudio dylib,
+  `brain/static`, data/.env paths → `~/Library/Application Support/Shadow Cursor/`.
+  **Plan B if the spike fails by 01:00:** Electron runs a bundled `uv` on first launch to create the
+  Python env (progress window, no Terminal).
+- **Database:** Postgres per serverless call = one connection each; Aiven is already provisioned, so
+  keep **one small table, pool of 1**. Pro status can stay local: `/api/checkout/verify` asks Stripe
+  if the session is paid (no webhook needed).
+- **Abuse guard:** a **global daily cap** on Holo/OpenAI calls (anyone can register a device), count
+  **tasks**, not calls (hedged Holo calls double traffic).
+- **Add `/api/config`:** min version, kill switch, free quota, message: change behaviour Sunday without
+  a new DMG. Logs to `~/Library/Logs/Shadow Cursor/`. One overlay error card (offline / 402 / 429).
+- **Vercel:** Fluid compute on, `maxDuration: 60`, region cdg1, Node runtime (not Edge), never send
+  full-res PNGs (4.5 MB limit), ping `/api/config` every ~4 min against cold starts.
+
+## Order (Sat 22:30 → Sun 11:00 freeze)
+1. **PyInstaller spike on the lead's Mac**, go/no-go by 01:00 (Claude).
+2. In parallel: Vercel routes + config + landing page, tested with `vercel dev` (Devin).
+3. Brain: `SHADOW_API` client, device token, frozen paths, tts fix, 402/429 (Claude + Devin's tests).
+4. Electron: spawn/stop the brain, Info.plist, electron-builder DMG, ad-hoc sign, permission window (Devin).
+5. Stripe verify route (Devin).
+6. Sunday 08:30: deploy, build the DMG, install it on a **second Mac** from the browser, run 2 scenarios.
+Cut first if late: Intel build, Keychain, fancy onboarding (one "Open Settings" button per permission).
+
+## Split
+- **Devin:** Vercel project (routes, caps, config, Stripe verify, landing + Gatekeeper GIF),
+  electron-builder + GitHub Actions build, Electron spawn/quit + permission window, brain proxy client
+  tests, install README.
+- **Claude (on the Mac, has the keys):** PyInstaller spec, frozen-path/tts fixes verified live,
+  Gladia through the proxy, packaged end-to-end run, Stripe test flow.
+- **Team lead:** Vercel env vars + deploy (Sunday), Stripe dashboard keys, second-Mac test, landing wording.
