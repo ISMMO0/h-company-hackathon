@@ -61,7 +61,8 @@ def _tool(name: str, desc: str, props: dict, required: list[str]) -> dict:
 
 _WHY = {"type": "string", "description": "Why this action, in a few words a beginner understands "
                                         "(e.g. 'that's where skills live'). Spoken to the person. In DO mode, "
-                                        "the first time: one or two short sentences that teach the idea."}
+                                        "the first time: one or two short sentences that teach the idea; "
+                                        "after that, at most 10 words."}
 
 
 def _action(name: str, desc: str, props: dict, required: list[str]) -> dict:

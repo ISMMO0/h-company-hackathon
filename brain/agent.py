@@ -64,6 +64,7 @@ class Agent:
         self.current_app = ""
         self.shown: dict[str, int] = {}  # Do it: rows/formulas already typed step by step this task
         self.partial = False
+        self.narrated = 0  # Do it narrations this task: the first ones teach in full
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
         self.open_mic: voice.Listener | None = None  # open mic for the running task
@@ -87,12 +88,20 @@ class Agent:
         self.memory.add(who, text)
         await self.to_overlay({"type": "chat", "who": who, "text": text})
 
+    @staticmethod
+    def said(text: str, whole: bool = False) -> str:
+        # Long replies get picked up by the mic: first sentence only unless it's a short narration.
+        return (text if whole else text.split(". ")[0]).strip()[:200]
+
     def speak(self, text: str, whole: bool = False) -> None:
         self.hush()
-        # Long replies get picked up by the mic: first sentence only unless it's a short narration.
-        said = text if whole else text.split(". ")[0]
         # OpenAI 'sage' voice (brain/tts.py), falls back to the Mac voice on its own.
-        self.say_proc = subprocess.Popen([sys.executable, "-m", "brain.tts", said.strip()[:200]])
+        self.say_proc = subprocess.Popen([sys.executable, "-m", "brain.tts", self.said(text, whole)])
+
+    def prefetch_voice(self, text: str, whole: bool = False) -> None:
+        """Generate the next sentence's audio while the current one still plays (~1.5 s saved)."""
+        subprocess.Popen([sys.executable, "-m", "brain.tts", "--prefetch", self.said(text, whole)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     async def finish_speaking(self, cap: float = 8.0) -> None:
         """Do it mode: let the current sentence end before the next one (it used to be cut off)."""
@@ -452,7 +461,7 @@ class Agent:
                 return
             app, title = screen.front_window()
             self.current_task, self.current_app = task, app
-            self.shown, self.partial, self.prev_action = {}, False, ""
+            self.shown, self.partial, self.prev_action, self.narrated = {}, False, "", 0
             self.task_apps = {app}
             self.current_title = title
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
@@ -685,8 +694,13 @@ class Agent:
         if not repeat:
             await self.chat("shadow", f"{label} ({why})" if why else label)
             if self.mode == "do":
+                # Teach the first moves in full; once the pattern is shown, one short sentence.
+                whole = self.narrated < 3 or self.partial
+                text = narrate(name, args, why)
+                self.prefetch_voice(text, whole)
                 await self.finish_speaking()
-                self.speak(narrate(name, args, why), whole=True)
+                self.speak(text, whole)
+                self.narrated += 1
             else:
                 self.speak(short(label, 70), whole=True)
 

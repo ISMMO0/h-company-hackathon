@@ -41,7 +41,9 @@ def audio_file(text: str) -> Path:
     with urllib.request.urlopen(req, timeout=6) as r:
         data = r.read()
     CACHE.mkdir(parents=True, exist_ok=True)
-    f.write_bytes(data)
+    tmp = f.with_suffix(f".{os.getpid()}.part")
+    tmp.write_bytes(data)
+    tmp.replace(f)  # atomic: a parallel prefetch never exposes a half-written file
     return f
 
 
@@ -54,5 +56,17 @@ def main(text: str) -> None:
         os.execvp("say", ["say", "-r", "190", text])
 
 
+def prefetch(text: str) -> None:
+    """Fetch and cache the audio only (no sound), so the real `speak` starts instantly."""
+    try:
+        if _key() and VOICE != "mac":
+            audio_file(text)
+    except Exception:  # noqa: BLE001, S110 - the real call will retry or fall back
+        pass
+
+
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if sys.argv[1] == "--prefetch":
+        prefetch(sys.argv[2])
+    else:
+        main(sys.argv[1])

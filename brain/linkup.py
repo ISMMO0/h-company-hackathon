@@ -37,8 +37,14 @@ def _post(body: dict, timeout: float) -> dict:
 def playbook(task: str, app: str, where: str = "", timeout: float = 6) -> dict:
     """{'steps': [{action_hint, target, why}], 'note': str}, or {} on failure.
     `where` is the front window title, so the steps start from the page the user is on."""
-    here = f"The user is already on '{where}' in {app}: start from there, skip opening it. " if where \
-        else f"The user currently has {app} open; only use {app} if the task is about it. "
+    browser = app.lower() in ("google chrome", "safari", "arc", "firefox", "microsoft edge", "brave browser")
+    if where and browser:  # e.g. "Feuille de calcul sans titre - Google Sheets": the site is the app
+        here = (f"The user is on the web page '{where}' in {app}: the task is about THAT website "
+                "(e.g. Google Sheets, not Excel, Numbers or Pages). Start from that page, skip opening it. ")
+    elif where:
+        here = f"The user is already on '{where}' in {app}: start from there, skip opening it. "
+    else:
+        here = f"The user currently has {app} open; only use {app} if the task is about it. "
     try:
         data = _post({
             "q": f"On a Mac, the exact UI path to: {task}. {here}"
