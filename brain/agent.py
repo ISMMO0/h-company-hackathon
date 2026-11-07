@@ -15,14 +15,13 @@ import base64
 import io
 import json
 import os
-import re
 import subprocess
 import time
 from pathlib import Path
 
 from PIL import ImageDraw
 
-from brain import linkup, planner, screen, voice
+from brain import linkup, planner, router, screen, voice
 
 try:
     from brain.memory import Memory
@@ -56,24 +55,31 @@ class Agent:
         self.say_proc: subprocess.Popen | None = None
         self.memory = Memory()
         self.full = None
+        self.current_task = ""
+        self.current_app = ""
+        self.offer: str = ""  # task offered after an answer ("show it on screen")
 
     # --- small outputs --------------------------------------------------------------------
     async def log(self, text: str) -> None:
         print(text, flush=True)
         await self.to_ui({"type": "log", "text": text})
 
-    async def panel(self, text: str, state: str) -> None:
-        await self.to_overlay({"type": "step", "text": text, "mode": self.mode, "state": state})
+    async def panel(self, text: str, state: str, why: str = "") -> None:
+        msg = {"type": "step", "text": text, "mode": self.mode, "state": state}
+        if why:
+            msg["why"] = why
+        await self.to_overlay(msg)
         await self.to_ui({"type": "status", "text": f"{state}: {text}" if text else state})
 
     async def chat(self, who: str, text: str) -> None:
         self.memory.add(who, text)
         await self.to_overlay({"type": "chat", "who": who, "text": text})
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, whole: bool = False) -> None:
         self.hush()
-        first = text.split(". ")[0].strip()  # long replies get picked up by the mic
-        self.say_proc = subprocess.Popen(["say", "-r", "190", first[:160]])
+        # Long replies get picked up by the mic: first sentence only unless it's a short narration.
+        said = text if whole else text.split(". ")[0]
+        self.say_proc = subprocess.Popen(["say", "-r", "190", said.strip()[:200]])
 
     def hush(self) -> None:
         if self.say_proc and self.say_proc.poll() is None:
@@ -158,17 +164,66 @@ class Agent:
     async def heard(self, text: str) -> None:
         await self.log(f'🎙 "{text}"')
         await self.to_ui({"type": "heard", "text": text})
-        if not self.busy():
-            self.start(text, mode_from(text, self.default_mode), countdown=False)
-            return
-        await self.chat("you", text)
-        if is_stop(text):
+        busy = self.busy()
+        if busy and is_stop(text):  # no round trip for the obvious one
             await self.on_stop()
             return
-        new_mode = mode_from(text, self.mode)
-        if new_mode != self.mode:
-            self.set_mode(new_mode)
-        self.push("said", text)
+        app = self.current_app if busy else screen.front_window()[0]
+        r = await asyncio.to_thread(router.route, text, busy, self.current_task, app)
+        intent, task = r["intent"], r["task"]
+        await self.log(f"→ {intent}: {task}")
+        if not busy:
+            if intent == "answer":
+                await self.answer(task)
+            else:
+                self.start(task, intent, countdown=False)
+            return
+        await self.chat("you", text)
+        if r.get("reply"):
+            self.speak(r["reply"])
+        if intent == "stop":
+            await self.on_stop()
+        elif intent == "new_task":
+            self.start(task, self.mode, countdown=False)
+        elif intent in ("guide", "do"):
+            self.set_mode(intent)
+            self.push("said", text)
+        elif intent == "ahead":
+            self.push("said", f"{text} (they say they are ahead: re-check the screen and skip what is done)")
+        elif intent == "wait":
+            self.push("said", f"{text} (they ask you to wait: use 'wait')")
+        elif intent == "question":
+            info = await asyncio.to_thread(linkup.lookup, self.current_task, app, task, task)
+            extra = f" Web notes: {info}" if info else ""
+            self.push("said", f"{text} (a question: answer it with 'say', then continue).{extra}")
+        else:  # update
+            self.current_task = task
+            self.push("said", f"{text} (the task is now: {task})")
+
+    async def answer(self, question: str) -> None:
+        """Pure information: answer it, with sources, and offer to show it on screen."""
+        await self.panel(question, "thinking", why="Searching the web")
+        a = await asyncio.to_thread(linkup.answer, question)
+        if not a.get("text"):
+            await self.panel("I couldn't find a good answer. Want me to search on screen?", "done")
+            self.offer = question
+            return
+        self.offer = f"Show me on screen: {question}"
+        await self.to_overlay({"type": "clear"})
+        await self.to_overlay({"type": "answer", "text": a["text"], "sources": a["sources"],
+                               "offer": "Want me to show it on screen?"})
+        await self.chat("you", question)
+        await self.chat("shadow", a["text"])
+        await self.log(f"💬 {a['text']}")
+        self.memory.start_task(question, "answer")
+        self.memory.finish_task(a["text"][:120])
+        self.speak(a["text"])
+
+    async def followup(self, mode: str) -> None:
+        """Answer card: Show me / Do it."""
+        if self.offer:
+            task, self.offer = self.offer, ""
+            self.start(task, mode, countdown=False)
 
     # --- task control ---------------------------------------------------------------------
     def busy(self) -> bool:
@@ -212,10 +267,11 @@ class Agent:
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
             app, _ = screen.front_window()
+            self.current_task, self.current_app = task, app
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
             self.memory.start_task(task, mode)
             await self.chat("you", task)
-            await self.panel(task, "thinking")
+            await self.panel(task, "thinking", why="Researching the steps…")
             self.speak("On it.")
             await self._loop(task, mode, app)
         except asyncio.CancelledError:
@@ -228,8 +284,7 @@ class Agent:
 
     async def _loop(self, task: str, mode: str, app: str) -> None:
         pl = planner.Planner(task, mode, self.memory.context())
-        hint_job = asyncio.create_task(asyncio.to_thread(linkup.how_to, task, app))
-        roadmap: list[str] = []
+        roadmap = await self.research(pl, task, app)
         w, h = screen.screen_size()
         last_key, repeats, pixels_ok = None, 0, True
         last_step = 0
@@ -237,14 +292,6 @@ class Agent:
         for i in range(MAX_STEPS):
             if self.stopped:
                 return
-            if hint_job and hint_job.done():
-                hint = hint_job.result()
-                hint_job = None
-                if hint:
-                    roadmap = roadmap_from(hint)
-                    pl.note(f"How-to notes found on the web (may be approximate):\n{hint}")
-                    await self.log(f"Linkup notes:\n{hint}")
-                    await self.send_plan(pl, roadmap)
             self._drain(pl)
 
             t0 = time.perf_counter()
@@ -335,6 +382,7 @@ class Agent:
             return f"Waited. {result_text(why)}", why
 
         label = label_of(name, args)
+        why = str(args.get("why") or "")
         point = None
         if name == "click":
             t = time.perf_counter()
@@ -347,11 +395,14 @@ class Agent:
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
         await self.preview(full.resize((w, h)), point, label)
         if not repeat:
-            await self.chat("shadow", label)
-            self.speak(label)
+            await self.chat("shadow", f"{label} ({why})" if why else label)
+            if self.mode == "do":
+                self.speak(narrate(name, args, why), whole=True)
+            else:
+                self.speak(label)
 
         if self.mode == "do":
-            await self.panel(label, "acting")
+            await self.panel(label, "acting", why)
             await asyncio.sleep(0.7 if point else 0.3)
             if name == "click":
                 await asyncio.to_thread(screen.click, *point)
@@ -364,11 +415,48 @@ class Agent:
             await asyncio.sleep(0.6)  # let the app react
             return "Done.", "did"
 
-        await self.panel(label, "waiting")
-        why = await self.watch(pixels_ok)
-        return result_text(why), why
+        await self.panel(label, "waiting", why)
+        reason = await self.watch(pixels_ok)
+        return result_text(reason), reason
+
+    async def research(self, pl, task: str, app: str) -> list[str]:
+        """Knowledge before the first click: Linkup playbook (≤5 s), cleaned by the router's
+        LLM if available, seeded as Holo's plan. Falls back to Holo alone."""
+        t = time.perf_counter()
+        try:
+            pb = await asyncio.wait_for(asyncio.to_thread(linkup.playbook, task, app), 5.0)
+        except TimeoutError:
+            pb = {}
+        steps = pb.get("steps", [])
+        if steps and router.enabled():
+            try:
+                steps = await asyncio.wait_for(
+                    asyncio.to_thread(router.merge_playbook, task, app, steps, pb.get("note", "")), 3.0)
+            except TimeoutError:
+                pass
+        if not steps:
+            await self.log(f"(no playbook, Holo plans alone, {time.perf_counter() - t:.1f}s)")
+            return []
+        lines = [f"{i}. {s['action_hint']}: {s.get('target', '')} ({s.get('why', '')})"
+                 for i, s in enumerate(steps, 1)]
+        if pb.get("note"):
+            lines.append(f"Tip: {pb['note']}")
+        pl.note("Playbook from the web (the known path; follow it, adapt to the screen):\n" + "\n".join(lines))
+        pl.plan = [s["action_hint"] for s in steps]
+        await self.log(f"Playbook ({time.perf_counter() - t:.1f}s):\n" + "\n".join(lines))
+        await self.send_plan(pl, pl.plan)
+        return pl.plan
 
     async def stuck(self, pl, args) -> str:
+        step = (pl.plan[pl.step - 1] if 0 < pl.step <= len(pl.plan) else "") or label_of("click", args)
+        if getattr(self, "_looked_up", None) != step:
+            self._looked_up = step
+            await self.panel("Let me check how to do this step…", "thinking", why="Searching the web")
+            info = await asyncio.to_thread(linkup.lookup, self.current_task, self.current_app, step)
+            if info:
+                await self.log(f"Linkup lookup for '{step}':\n{info}")
+                return ("You proposed the same action 3 times. Web notes for this step: "
+                        f"{info} Use them and try a different target.")
         text = "I keep suggesting the same step. Can you tell me where you are, or do it your way?"
         await self.panel(text, "paused")
         await self.chat("shadow", text)
@@ -469,18 +557,9 @@ def result_text(why: str) -> str:
                "from where they are now; skip steps that are already done.")
 
 
-DO_WORDS = ("do it", "do this", "for me", "fais-le", "fais le", "à ma place", "fais-moi", "fais moi")
 STOP_PHRASES = {"stop", "stop it", "stop shadow", "arrête", "arrete", "arrête-toi", "cancel",
                 "annule", "c'est bon stop"}
 
-
-def mode_from(text: str, default: str) -> str:
-    t = text.lower()
-    if any(w in t for w in DO_WORDS):
-        return "do"
-    if "show me" in t or "montre" in t or "guide" in t:
-        return "guide"
-    return default
 
 
 def is_stop(text: str) -> bool:
@@ -488,13 +567,14 @@ def is_stop(text: str) -> bool:
     return text.lower().strip(" .!?,") in STOP_PHRASES
 
 
-def roadmap_from(hint: str) -> list[str]:
-    steps = []
-    for line in hint.splitlines():
-        m = re.match(r"\s*\d+[.)]\s+(.*)", line)
-        if m:
-            steps.append(m.group(1).replace("**", "").strip())
-    return steps[:8]
+
+def narrate(name: str, args: dict, why: str) -> str:
+    """What Do it mode says out loud while acting, like a tutor."""
+    what = {"click": f"Clicking {short(args.get('element', ''), 50)}",
+            "type": f"Typing {args.get('text', '')}",
+            "press": f"Pressing {args.get('keys', '')}",
+            "scroll": "Scrolling"}.get(name, name)
+    return f"{what}, {why}" if why else what
 
 
 def label_of(name: str, args: dict) -> str:

@@ -56,8 +56,12 @@ def _tool(name: str, desc: str, props: dict, required: list[str]) -> dict:
         "type": "object", "properties": props, "required": required}}}
 
 
+_WHY = {"type": "string", "description": "Why this action, in a few words a beginner understands "
+                                        "(e.g. 'that's where skills live'). Spoken to the person."}
+
+
 def _action(name: str, desc: str, props: dict, required: list[str]) -> dict:
-    return _tool(name, desc, {**props, "step": _STEP, "plan": _PLAN}, [*required, "step"])
+    return _tool(name, desc, {**props, "step": _STEP, "why": _WHY, "plan": _PLAN}, [*required, "step"])
 
 
 TOOLS = [
@@ -89,7 +93,9 @@ Mode GUIDE: you only show the action (the pink cursor points, a voice says it) a
 Mode DO: your action is executed for real while the person watches.
 
 Keep a short numbered plan for the task. Fill 'plan' on your first action and again whenever it changes.
-Every action has 'step' = the plan step it belongs to.
+Every action has 'step' = the plan step it belongs to, and 'why' = a few words explaining it like a tutor.
+If a playbook from the web is given, follow it: it is the known path. Adapt only to what the screen
+shows (different layout, a step already done). Do not explore when the playbook names the target.
 
 The person may skip ahead, go back, or do things their own way. Always judge where they are from the
 CURRENT screenshot, never from what you asked before. If a later step is already reached, continue from

@@ -55,6 +55,8 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
             agent.push("next")
         elif kind == "mode":
             agent.set_mode(data.get("mode", "guide"))
+        elif kind == "followup":
+            asyncio.create_task(agent.followup(data.get("mode", "guide")))
     overlays.discard(ws)
     return ws
 
