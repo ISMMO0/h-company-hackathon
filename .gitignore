@@ -19,3 +19,7 @@ node_modules/
 
 # Session memory, bench outputs
 data/
+
+# Real screenshots stay local
+bench/fixtures/*/
+!bench/fixtures/example/
