@@ -146,6 +146,29 @@ def click(x: float, y: float, double: bool = False) -> None:
             time.sleep(0.03)
 
 
+def right_click(x: float, y: float) -> None:
+    pt = (x, y)
+    _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, pt, 0))
+    time.sleep(0.05)
+    for t in (Quartz.kCGEventRightMouseDown, Quartz.kCGEventRightMouseUp):
+        _post(Quartz.CGEventCreateMouseEvent(None, t, pt, Quartz.kCGMouseButtonRight))
+        time.sleep(0.03)
+
+
+def drag(x0: float, y0: float, x1: float, y1: float, steps: int = 20) -> None:
+    """Press at (x0, y0), move in small steps, release at (x1, y1) (apps need the moves)."""
+    _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (x0, y0), 0))
+    time.sleep(0.05)
+    _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, (x0, y0), Quartz.kCGMouseButtonLeft))
+    time.sleep(0.12)
+    for i in range(1, steps + 1):
+        pt = (x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps)
+        _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDragged, pt, Quartz.kCGMouseButtonLeft))
+        time.sleep(0.015)
+    time.sleep(0.1)
+    _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, (x1, y1), Quartz.kCGMouseButtonLeft))
+
+
 def type_text(text: str) -> None:
     for ch in text:
         for down in (True, False):

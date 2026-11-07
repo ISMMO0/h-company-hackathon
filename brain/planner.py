@@ -73,6 +73,24 @@ TOOLS = [
         "x": {"type": "integer", "description": "X coordinate as integer in [0, 1000]"},
         "y": {"type": "integer", "description": "Y coordinate as integer in [0, 1000]"},
     }, ["element", "x", "y"]),
+    _action("right_click", "Right-click at (x, y) to open a context menu", {
+        "element": {"type": "string", "description": "Detailed description of the target UI element"},
+        "x": {"type": "integer", "description": "X coordinate as integer in [0, 1000]"},
+        "y": {"type": "integer", "description": "Y coordinate as integer in [0, 1000]"},
+    }, ["element", "x", "y"]),
+    _action("double_click", "Double-click at (x, y) (open an item, edit a value)", {
+        "element": {"type": "string", "description": "Detailed description of the target UI element"},
+        "x": {"type": "integer", "description": "X coordinate as integer in [0, 1000]"},
+        "y": {"type": "integer", "description": "Y coordinate as integer in [0, 1000]"},
+    }, ["element", "x", "y"]),
+    _action("drag", "Drag from one element to another (e.g. a track onto a deck)", {
+        "element": {"type": "string", "description": "What to drag"},
+        "x": {"type": "integer", "description": "Start X in [0, 1000]"},
+        "y": {"type": "integer", "description": "Start Y in [0, 1000]"},
+        "to_element": {"type": "string", "description": "Where to drop it"},
+        "to_x": {"type": "integer", "description": "Drop X in [0, 1000]"},
+        "to_y": {"type": "integer", "description": "Drop Y in [0, 1000]"},
+    }, ["element", "x", "y", "to_element", "to_x", "to_y"]),
     _action("type", "Type text into a field or cell (it is clicked first if needed)", {
         "text": {"type": "string", "description": "Text to type"},
         "element": {"type": "string", "description": "The field or cell to type into, e.g. 'cell A1'"},

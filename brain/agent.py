@@ -612,7 +612,14 @@ class Agent:
             point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
             self._last_point = point
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
-        if name == "click":
+        drop = None
+        if name == "drag":
+            t = time.perf_counter()
+            tx, ty = await asyncio.to_thread(planner.point, full, args.get("to_element", ""),
+                                             (args.get("to_x", 500), args.get("to_y", 500)))
+            drop = (tx / 1000 * w, ty / 1000 * h)
+            self._t_point = time.perf_counter() - t
+        if name in ("click", "right_click", "double_click", "drag"):
             t = time.perf_counter()
             nx, ny = await asyncio.to_thread(planner.point, full, args.get("element", ""),
                                              (args.get("x", 500), args.get("y", 500)))
@@ -638,6 +645,12 @@ class Agent:
             await asyncio.sleep(0.7 if point else 0.3)
             if name == "click":
                 await asyncio.to_thread(screen.click, *point)
+            elif name == "double_click":
+                await asyncio.to_thread(screen.click, *point, True)
+            elif name == "right_click":
+                await asyncio.to_thread(screen.right_click, *point)
+            elif name == "drag" and drop:
+                await asyncio.to_thread(screen.drag, *point, *drop)
             elif name == "type":
                 if point:  # focus the field first
                     await asyncio.to_thread(screen.click, *point)
@@ -840,6 +853,9 @@ def is_stop(text: str) -> bool:
 def narrate(name: str, args: dict, why: str) -> str:
     """What Do it mode says out loud while acting, like a tutor."""
     what = {"click": f"Clicking {short(args.get('element', ''), 50)}",
+            "right_click": f"Right-clicking {short(args.get('element', ''), 50)}",
+            "double_click": f"Double-clicking {short(args.get('element', ''), 50)}",
+            "drag": f"Dragging {short(args.get('element', ''), 30)} onto {short(args.get('to_element', ''), 30)}",
             "type": f"Typing {args.get('text', '')}",
             "press": f"Pressing {args.get('keys', '')}",
             "scroll": "Scrolling"}.get(name, name)
@@ -849,6 +865,12 @@ def narrate(name: str, args: dict, why: str) -> str:
 def label_of(name: str, args: dict) -> str:
     if name == "click":
         return f"Click {args.get('element', '')}".strip()
+    if name == "right_click":
+        return f"Right-click {args.get('element', '')}".strip()
+    if name == "double_click":
+        return f"Double-click {args.get('element', '')}".strip()
+    if name == "drag":
+        return f"Drag {args.get('element', '')} onto {args.get('to_element', '')}".strip()
     if name == "type":
         where = f" in {args['element']}" if args.get("element") else ""
         return f'Type "{args.get("text", "")}"{where}'

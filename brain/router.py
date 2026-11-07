@@ -86,8 +86,10 @@ If a task IS running, intent is one of:
 - "update": extra info or a change to the current task ("actually make it 12 euros"). Put the
   updated full task in "task".
 - "new_task": an unrelated new request. Put it in "task".
-- "ignore": the mic is open during the task, so they may think out loud, hesitate ("hmm", "ah ok",
-  "da da da") or talk to someone else. Anything not addressed to the assistant is "ignore".
+- "ignore": ONLY fillers and talk not meant for the assistant: hesitations ("hmm", "ah ok", "da da da"),
+  talking to someone else, background noise words ("you", "so"). NEVER "ignore" anything that reports
+  progress ("I clicked it"), a problem ("it's not synced", "nothing happened"), a doubt or a question:
+  progress → "ahead", problem/doubt → "update" (put the problem in "task"), question → "question".
 "reply" is a very short spoken acknowledgement (max 6 words, same language as the person)."""
 
 
