@@ -2,6 +2,8 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 14:00** Controls that always work: a menu bar icon (pink dot: Talk, Stop, show/hide the
+  idle pink cursor, step log, Quit) and a global stop shortcut **Control+Option+X**.
 - **Sat 13:45** After the team lead's YouTube test:
   - Precise pointing: each click gets a second, dedicated Holo localization call on the
     full-resolution screenshot (no thinking, temp 0), replacing the planner's rough point.

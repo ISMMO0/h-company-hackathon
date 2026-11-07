@@ -386,9 +386,12 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
             brain.mode = brain.default_mode = json.loads(msg.data).get("mode", "guide")
             brain.next_step.set()  # re-plan now in the new mode
         elif kind == "stop":
+            busy = bool(brain.task and not brain.task.done())
             brain.stop()
             await brain.to_overlay({"type": "clear"})
             await brain.log("■ Stopped")
+            if busy:
+                brain.speak("Stopped.")
     brain.overlays.discard(ws)
     return ws
 

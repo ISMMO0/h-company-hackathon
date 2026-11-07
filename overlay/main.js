@@ -1,10 +1,11 @@
-const { app, BrowserWindow, globalShortcut, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, Tray, screen, shell, ipcMain } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 
 const BRAIN_URL = 'ws://127.0.0.1:8765/ws/overlay';
 const RECONNECT_MS = 1000;
 const HOTKEY = 'Control+Alt+Space';
+const STOP_HOTKEY = 'Control+Alt+X';
 
 const FOLLOW_MS = 16; // ~60 fps
 const FOLLOW_OFFSET = 16;
@@ -95,8 +96,11 @@ function followTick() {
   });
 }
 
+let followEnabled = true; // menu bar: "Hide pink cursor when idle"
+let tray = null;
+
 function startFollow(glide) {
-  if (followTimer) return;
+  if (followTimer || !followEnabled) return;
   glideUntil = glide ? Date.now() + GLIDE_MS : 0;
   lastFollow = null;
   followTimer = setInterval(followTick, FOLLOW_MS);
@@ -227,8 +231,35 @@ function connect() {
   });
 }
 
+// Menu bar icon: the always-available way to talk, stop, hide or quit.
+function buildTray() {
+  tray = new Tray(path.join(__dirname, 'tray.png'));
+  tray.setToolTip('Shadow Cursor');
+  const menu = Menu.buildFromTemplate([
+    { label: 'Talk to Shadow', accelerator: HOTKEY, click: () => send({ type: 'hotkey' }) },
+    { label: 'Stop', accelerator: STOP_HOTKEY, click: () => send({ type: 'stop' }) },
+    { type: 'separator' },
+    {
+      label: 'Show pink cursor when idle', type: 'checkbox', checked: true,
+      click: (item) => {
+        followEnabled = item.checked;
+        if (followEnabled) startFollow(false);
+        else {
+          stopFollow();
+          if (!lastCursor && !lastStep) broadcast({ type: 'clear' });
+        }
+      },
+    },
+    { label: 'Open step log', click: () => shell.openExternal('http://127.0.0.1:8765') },
+    { type: 'separator' },
+    { label: 'Quit Shadow Cursor', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(menu);
+}
+
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
+  buildTray();
   rebuildWindows();
   startFollow(false);
   screen.on('display-added', rebuildWindows);
@@ -237,6 +268,9 @@ app.whenReady().then(() => {
   connect();
   if (!globalShortcut.register(HOTKEY, () => send({ type: 'hotkey' }))) {
     console.error(`could not register ${HOTKEY}`);
+  }
+  if (!globalShortcut.register(STOP_HOTKEY, () => send({ type: 'stop' }))) {
+    console.error(`could not register ${STOP_HOTKEY}`);
   }
 });
 
