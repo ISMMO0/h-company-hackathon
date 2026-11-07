@@ -100,6 +100,10 @@
   }
   .cta:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -8px color-mix(in srgb, var(--accent) 65%, transparent); }
   .cta:active { transform: scale(.98); }
+  .cta.is-on { cursor: default; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+  .actions .cta { margin-top: 0; }
+  .color-btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 18px; font-size: 15px; font-weight: 560; }
 
   /* Customizer */
   .custom {
@@ -219,7 +223,10 @@
       </div>
       <h1>A second cursor<br>that shows you how.</h1>
       <p class="sub">Press <kbd>⌃⌥Space</kbd> and ask. It guides you step by step, or does it while you watch.</p>
-      <button class="cta" id="get" type="button"><i class="ph ph-paint-brush-broad"></i>Get your Shadow Cursor</button>
+      <div class="actions">
+        <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Shadow Cursor</span></button>
+        <button class="ghost color-btn" id="color" type="button"><i class="ph ph-palette"></i>Change color</button>
+      </div>
       <div class="custom" id="custom" role="dialog" aria-label="Customize your cursor">
         <div class="custom-head">Pick your color
           <button class="icon-btn" id="close" type="button" aria-label="Close"><i class="ph ph-x"></i></button>
@@ -298,17 +305,20 @@
   $("swatches").onclick = (e) => { const b = e.target.closest(".sw[data-c]"); if (b) saveColor(b.dataset.c); };
   $("anycolor").oninput = (e) => applyColor(e.target.value);
   $("anycolor").onchange = (e) => saveColor(e.target.value);
+  function cursorOn(on) {
+    $("get-label").textContent = on ? "Shadow Cursor is on" : "Get your Shadow Cursor";
+    $("get-icon").className = `ph ${on ? "ph-check-circle" : "ph-cursor-click"}`;
+    $("get").classList.toggle("is-on", on);
+  }
   $("get").onclick = async () => {
-    const label = $("get").lastChild;
-    if (!$("custom").classList.contains("on")) {
-      label.textContent = "Starting your cursor…";
-      try {
-        const r = await (await fetch("/overlay/start", { method: "POST" })).json();
-        label.textContent = r.running ? "Your Shadow Cursor is on" : "Get your Shadow Cursor";
-      } catch { label.textContent = "Get your Shadow Cursor"; }
-    }
-    $("custom").classList.toggle("on");
+    if ($("get").classList.contains("is-on")) return;
+    $("get-label").textContent = "Starting…";
+    try {
+      const r = await (await fetch("/overlay/start", { method: "POST" })).json();
+      cursorOn(r.running);
+    } catch { cursorOn(false); }
   };
+  $("color").onclick = () => $("custom").classList.toggle("on");
   $("close").onclick = () => $("custom").classList.remove("on");
   fetch("/theme").then((r) => r.json()).then((t) => applyColor(t.color)).catch(() => applyColor("#ff3ea5"));
 
@@ -392,7 +402,9 @@
     ws.onclose = () => { online(false); setTimeout(connect, 1000); };
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      if (m.type === "status") {
+      if (m.type === "overlay") {
+        cursorOn(m.connected);
+      } else if (m.type === "status") {
         $("status").textContent = m.text;
         $("next").style.display = m.text.includes("Next") ? "inline-block" : "none";
       } else if (m.type === "log") {

@@ -37,7 +37,7 @@ agent.overlay_connected = lambda: bool(overlays)
 
 
 async def index(_req: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC / "index.html")
+    return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
 async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
@@ -45,6 +45,7 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
     await ws.prepare(req)
     overlays.add(ws)
     await ws.send_json({"type": "theme", "color": history.color()})
+    await _send(uis, {"type": "overlay", "connected": True})
     await agent.log("Overlay connected")
     async for msg in ws:
         if msg.type != WSMsgType.TEXT:
@@ -64,6 +65,7 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
         elif kind == "followup":
             asyncio.create_task(agent.followup(data.get("mode", "guide")))
     overlays.discard(ws)
+    await _send(uis, {"type": "overlay", "connected": bool(overlays)})
     return ws
 
 
@@ -144,6 +146,8 @@ async def overlay_start(_req: web.Request) -> web.Response:
     for _ in range(40):  # it connects back in ~2 s
         await asyncio.sleep(0.25)
         if overlays:
+            await asyncio.sleep(0.6)
+            await _send(overlays, {"type": "pulse"})  # a ring next to your mouse: "here I am"
             return web.json_response({"running": True, "started": True})
     return web.json_response({"running": False, "started": True})
 
