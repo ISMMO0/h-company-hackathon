@@ -138,7 +138,7 @@ def window_owner_at(x: float, y: float) -> str:
         if b.get("X", 0) <= x <= b.get("X", 0) + b.get("Width", 0) and \
                 b.get("Y", 0) <= y <= b.get("Y", 0) + b.get("Height", 0):
             name = w.get("kCGWindowOwnerName", "")
-            if name in ("Window Server", "Dock") or w.get("kCGWindowLayer", 0) > 1000:
+            if name in ("Window Server", "Dock", "Electron") or w.get("kCGWindowLayer", 0) > 1000:  # Electron = our overlay
                 continue
             return name
     return ""

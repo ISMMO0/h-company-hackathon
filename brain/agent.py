@@ -657,6 +657,11 @@ class Agent:
         if self.mode == "do" and screen.frontmost_app() in screen.SYSTEM_APPS:
             return await self.blocked(screen.frontmost_app()), "next"
 
+        if self.mode == "do":
+            refusal = risky(name, args, self.current_task)
+            if refusal:
+                await self.log(f"⛔ {refusal}")
+                return refusal + " Do the task in the current app, or use 'say' to ask the person.", "next"
         if name == "type" and self.mode == "do":
             if "address bar" in (args.get("element") or "").lower() or "url" in (args.get("element") or "").lower():
                 await self.log("⛔ not typing in the address bar (autocomplete can open any site)")
@@ -717,6 +722,11 @@ class Agent:
                 await self.log(f"⛔ not acting in {owner}: it isn't the app of this task")
                 return (f"That spot is in {owner}, which is not part of this task. Never act there: "
                         "go back to the task's app."), "next"
+            if self.mode == "do" and owner and owner not in self.task_apps and owner not in screen.SYSTEM_APPS \
+                    and owner.lower() not in self.current_task.lower():
+                await self.log(f"⛔ not acting in {owner}: the task is in {', '.join(sorted(self.task_apps))}")
+                return (f"That spot is in {owner}, another app. Do it stays in the task's app "
+                        f"({', '.join(sorted(self.task_apps))}): do the task there, or use 'say' to ask."), "next"
             if owner and owner not in screen.SYSTEM_APPS:
                 self.task_apps.add(owner)  # the task continues in that app
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
@@ -1029,6 +1039,25 @@ def label_of(name: str, args: dict) -> str:
 def short(label: str, n: int = 42) -> str:
     first = label.split(" - ")[0].split(", ")[0]
     return first if len(first) <= n else first[: n - 1] + "…"
+
+
+def risky(name: str, args: dict, task: str) -> str:
+    """Do it never leaves the task's app on its own, never closes or quits, never discards work."""
+    t = task.lower()
+    keys = (args.get("keys") or "").lower().replace(" ", "").replace("command", "cmd")
+    if name == "press" and keys in ("cmd+tab", "cmd+space", "cmd+`") and not re.search(r"\b(open|switch|launch)\b", t):
+        return f"Not pressing {keys}: Do it stays in the app it started in."
+    if name == "press" and keys in ("cmd+q", "cmd+w", "cmd+shift+w", "cmd+option+esc"):
+        return f"Not pressing {keys}: quitting apps or closing windows is not allowed."
+    element = (args.get("element") or "").lower()
+    if name in ("click", "double_click") and re.search(
+            r"\b(delete|don.t save|discard|supprimer|ne pas enregistrer|erase|remove)\b", element) \
+            and not re.search(r"\b(delete|remove|erase|supprime)", t):
+        return "Not clicking a delete / don't-save button: the task did not ask to delete anything."
+    if name in ("click", "double_click") and re.search(r"\b(dock|applications folder|launchpad)\b", element) \
+            and not re.search(r"\b(open|launch|start)\b", t):
+        return "Not opening other apps from the Dock or Applications: Do it stays in the task's app."
+    return ""
 
 
 OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Electron: that's our overlay
