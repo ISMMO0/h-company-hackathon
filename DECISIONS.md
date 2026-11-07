@@ -2,6 +2,15 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 13:45** After the team lead's YouTube test:
+  - Precise pointing: each click gets a second, dedicated Holo localization call on the
+    full-resolution screenshot (no thinking, temp 0), replacing the planner's rough point.
+  - Talk any time: the hotkey during a task no longer stops it; what you say is added to the
+    task and Holo re-plans. Only a bare "stop" / "arrête" (or the × button) stops.
+  - Mic waits for the whole sentence: Gladia endpointing 0.8 s, then finals are joined until
+    1.5 s of quiet.
+  - Details view (protocol v3): done / current / roadmap (numbered Linkup steps) + chat lines.
+  - Idle follow: the pink cursor sits next to the mouse when no task runs (Devin, overlay).
 - **Sat 13:15** GUIDE mode follows the user live: after showing a step it watches the screen
   (tiny screenshots every ~0.3 s, pixel diff, no model call) and re-plans as soon as the screen
   changes and settles or the user clicks; Next is only a fallback. Steps the user already did

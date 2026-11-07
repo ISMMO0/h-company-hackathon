@@ -18,11 +18,15 @@ def screen_size() -> tuple[int, int]:
     return int(f.size.width), int(f.size.height)
 
 
-def capture() -> Image.Image:
+def capture_full() -> Image.Image:
+    """Main display at native (Retina) resolution."""
     with tempfile.NamedTemporaryFile(suffix=".png") as f:
         subprocess.run(["screencapture", "-x", "-m", "-t", "png", f.name], check=True)
-        img = Image.open(f.name).convert("RGB")
-    return img.resize(screen_size())
+        return Image.open(f.name).convert("RGB")
+
+
+def capture() -> Image.Image:
+    return capture_full().resize(screen_size())
 
 
 def thumb() -> Image.Image:

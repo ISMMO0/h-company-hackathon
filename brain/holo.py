@@ -129,3 +129,41 @@ def step(messages: list) -> tuple[str, dict, str]:
         return "", {}, ""
     call = calls[0]
     return call.function.name, json.loads(call.function.arguments or "{}"), call.id
+
+
+LOCALIZE_MODEL = os.environ.get("HOLO_LOCALIZE_MODEL", "holo4-27b")
+POINT_SCHEMA = {
+    "type": "object",
+    "properties": {"x": {"type": "integer", "minimum": 0, "maximum": 1000},
+                   "y": {"type": "integer", "minimum": 0, "maximum": 1000}},
+    "required": ["x", "y"],
+}
+
+
+def localize(img: Image.Image, element: str) -> tuple[int, int] | None:
+    """Second, single-purpose call: precise [0,1000] click point for an element description.
+    The planning loop sees a downscaled screenshot; this sees a sharper one (H's recommended
+    grounding call: no history, thinking off, temperature 0)."""
+    if img.width > 1920:
+        img = img.resize((1920, round(img.height * 1920 / img.width)))
+    prompt = (
+        "Localize an element on the GUI image according to the provided target "
+        "and output a click position.\n"
+        f" * You must output a valid JSON following the format: {json.dumps(POINT_SCHEMA)}\n"
+        f" Your target is:\n{element}"
+    )
+    try:
+        resp = client().chat.completions.create(
+            model=LOCALIZE_MODEL,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image_uri(img)}},
+                {"type": "text", "text": prompt},
+            ]}],
+            extra_body={"structured_outputs": {"json": POINT_SCHEMA},
+                        "chat_template_kwargs": {"enable_thinking": False}},
+            temperature=0.0,
+        )
+        p = json.loads(resp.choices[0].message.content)
+        return int(p["x"]), int(p["y"])
+    except Exception:  # noqa: BLE001 - fall back to the planner's point
+        return None

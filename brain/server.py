@@ -7,6 +7,7 @@ import asyncio
 import base64
 import io
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -35,6 +36,10 @@ class Brain:
         self.listening = False
         self.default_mode = "guide"  # follows the toggle on the control page
         self.mode = "guide"  # mode of the running task; the panel toggle switches it live
+        self.full = None  # last native-resolution screenshot, for precise pointing
+        self.said: list[str] = []  # things the person said mid-task, not yet given to Holo
+        self.done_steps: list[str] = []
+        self.roadmap: list[str] = []
 
     # --- outputs -------------------------------------------------------------
     async def to_overlay(self, msg: dict) -> None:
@@ -74,9 +79,9 @@ class Brain:
                 await asyncio.wait_for(self.hidden.wait(), 0.5)
             except TimeoutError:
                 pass
-        img = await asyncio.to_thread(screen.capture)
+        self.full = await asyncio.to_thread(screen.capture_full)
         await self.to_overlay({"type": "show"})
-        return img
+        return self.full.resize(screen.screen_size())
 
     async def send_preview(self, img, point=None, label="") -> None:
         im = img.copy()
@@ -96,9 +101,21 @@ class Brain:
         await self.to_overlay({"type": "step", "text": text, "mode": self.mode, "state": state})
         await self.to_ui({"type": "status", "text": f"{state}: {text}" if text else state})
 
+    async def plan(self, current: str = "") -> None:
+        """Details view: what's done, what's happening, and the web how-to as a roadmap."""
+        steps = [{"text": t, "status": "done"} for t in self.done_steps[-12:]]
+        if current:
+            steps.append({"text": current, "status": "current"})
+        steps += [{"text": t, "status": "todo"} for t in self.roadmap]
+        await self.to_overlay({"type": "plan", "steps": steps})
+
+    async def chat(self, who: str, text: str) -> None:
+        await self.to_overlay({"type": "chat", "who": who, "text": text})
+
     async def run(self, task: str, mode: str, countdown: bool = True) -> None:
         self.stopped = False
         self.mode = mode
+        self.said, self.done_steps, self.roadmap = [], [], []
         try:
             for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
@@ -106,11 +123,14 @@ class Brain:
             app = screen.frontmost_app()
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
             await self.panel(task, "thinking")
+            await self.chat("you", task)
             self.speak("On it.")
 
             hint = await asyncio.to_thread(linkup.how_to, task, app)
             if hint:
                 await self.log(f"Linkup notes:\n{hint}")
+                self.roadmap = roadmap_from(hint)
+                await self.plan()
             messages = holo.new_conversation(task, hint)
             w, h = screen.screen_size()
             last_label = ""
@@ -118,6 +138,9 @@ class Brain:
             for i in range(MAX_STEPS):
                 if self.stopped:
                     break
+                while self.said:
+                    messages.append({"role": "user", "content":
+                                     f"The person just said: \"{self.said.pop(0)}\". Take it into account."})
                 img = await self.snapshot()
                 messages.append(holo.observation(img))
                 t0 = time.perf_counter()
@@ -130,12 +153,17 @@ class Brain:
                     await self.send_preview(img, label=text)
                     await self.log(f"✓ {text}")
                     await self.panel(text, "done")
+                    await self.chat("shadow", text)
+                    self.roadmap = []
+                    await self.plan()
                     self.speak(text)
                     await asyncio.sleep(6)
                     break
 
                 result = await self.act(name, args, img, w, h, repeat=(label_of(name, args) == last_label))
                 last_label = label_of(name, args)
+                if not self.done_steps or self.done_steps[-1] != last_label:
+                    self.done_steps.append(last_label)
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": result})
             else:
                 await self.log("Step budget reached.")
@@ -155,12 +183,19 @@ class Brain:
         label = label_of(name, args)
         point = None
         if name == "click":
-            point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
+            nx, ny = args["x"], args["y"]
+            if self.full is not None and args.get("element"):
+                refined = await asyncio.to_thread(holo.localize, self.full, args["element"])
+                if refined:
+                    nx, ny = refined
+            point = (nx / 1000 * w, ny / 1000 * h)
             if self.mode == "do" and screen.window_owner_at(*point) in screen.SYSTEM_APPS:
                 return await self.blocked(screen.window_owner_at(*point))
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
         await self.send_preview(img, point, label)
+        await self.plan(label)
         if not repeat:
+            await self.chat("shadow", label)
             self.speak(label)
 
         if self.mode == "do":
@@ -179,6 +214,8 @@ class Brain:
 
         await self.panel(label, "waiting")
         why = await self.watch()
+        if self.said:
+            return "The person spoke instead (see their message). This step may not be done yet."
         if why == "next":
             return "The person pressed Next: they did this step or want to skip it."
         return ("The screen changed: the person acted. Look at the new screenshot. If this step "
@@ -231,12 +268,7 @@ class Brain:
         """⌃⌥Space: stop if busy, otherwise listen once and start in the current app."""
         if self.listening:
             return
-        if self.task and not self.task.done():
-            self.stop()
-            await self.to_overlay({"type": "clear"})
-            await self.log("■ Stopped")
-            self.speak("Stopped.")
-            return
+        busy = bool(self.task and not self.task.done())
         self.listening = True
         self.hush()  # never transcribe our own voice
         await asyncio.sleep(0.15)
@@ -255,6 +287,19 @@ class Brain:
             await self.to_ui({"type": "status", "text": "Didn't catch that"})
             return
         await self.log(f'🎙 "{text}"')
+        if busy:
+            await self.chat("you", text)
+            if is_stop(text):
+                self.stop()
+                await self.to_overlay({"type": "clear"})
+                await self.log("■ Stopped")
+                self.speak("Stopped.")
+                return
+            self.mode = mode_from(text, self.mode)
+            self.said.append(text)
+            self.next_step.set()  # re-plan right away with what they said
+            self.speak("Got it.")
+            return
         await self.to_ui({"type": "heard", "text": text})
         self.start(text, mode_from(text, self.default_mode), countdown=False)
 
@@ -276,6 +321,25 @@ def mode_from(text: str, default: str) -> str:
     if "show me" in t or "montre" in t or "guide" in t:
         return "guide"
     return default
+
+
+STOP_PHRASES = {"stop", "stop it", "stop shadow", "arrête", "arrete", "arrête-toi", "cancel",
+                "annule", "c'est bon stop"}
+
+
+def is_stop(text: str) -> bool:
+    """Only a bare 'stop' stops: 'stop the video at 2:00' is a task, not a command."""
+    return text.lower().strip(" .!?,") in STOP_PHRASES
+
+
+def roadmap_from(hint: str) -> list[str]:
+    """Numbered steps from the Linkup notes, without markdown."""
+    steps = []
+    for line in hint.splitlines():
+        m = re.match(r"\s*\d+[.)]\s+(.*)", line)
+        if m:
+            steps.append(m.group(1).replace("**", "").strip())
+    return steps[:8]
 
 
 def label_of(name: str, args: dict) -> str:
