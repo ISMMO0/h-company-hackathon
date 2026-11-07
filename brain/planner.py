@@ -156,6 +156,8 @@ files and non-English words ("Chia Kola" may be "Tiakola", "OG tea" may be "OG f
 closest names visible on screen and use the on-screen spelling; if unsure between several, use 'say' to ask.
 Never ask to click something that is already selected or focused (e.g. a cell that already has the blue
 border): go straight to the next action, e.g. 'type' into it.
+To change a spreadsheet cell's value, just 'type' into the cell: typing replaces its content. Do not
+double-click it first (that edits inside the old value, e.g. 5 + 10 gives 510).
 Never ask to click an empty area "to focus" something. Typing a URL is a last resort: only after the
 on-page navigation clearly failed, and say so with 'say' first.
 If something the plan expects isn't on screen after one look (or one scroll), it may have been removed or

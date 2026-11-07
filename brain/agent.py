@@ -43,7 +43,9 @@ FIXTURES = Path("data/fixtures")
 
 class Agent:
     def __init__(self, to_overlay, to_ui) -> None:
-        self.to_overlay = to_overlay  # async (dict) -> None
+        self._send_overlay = to_overlay  # async (dict) -> None
+        self.cursor_at: tuple[float, float] | None = None  # where the pink cursor (and its bubble) is
+        self.prev_action = ""  # last executed Do it action, e.g. "double_click"
         self.to_ui = to_ui            # async (dict) -> None
         self.overlay_connected = lambda: False
         self.hidden = asyncio.Event()
@@ -448,7 +450,7 @@ class Agent:
                 return
             app, title = screen.front_window()
             self.current_task, self.current_app = task, app
-            self.shown, self.partial = {}, False
+            self.shown, self.partial, self.prev_action = {}, False, ""
             self.task_apps = {app}
             self.current_title = title
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
@@ -547,9 +549,9 @@ class Agent:
             if name == "answer":
                 text = args.get("content", "Done.")
                 await self.log(f"✓ {text}")
-                if self._last_point:  # drop the last step's bubble ("Type 5 here")
-                    await self.to_overlay({"type": "cursor", "x": self._last_point[0],
-                                           "y": self._last_point[1], "label": ""})
+                if self.cursor_at:  # drop the last step's bubble ("Type 5 here")
+                    await self.to_overlay({"type": "cursor", "x": self.cursor_at[0],
+                                           "y": self.cursor_at[1], "label": ""})
                 await self.panel(text, "done")
                 await self.chat("shadow", text)
                 self.memory.finish_task(text)
@@ -594,6 +596,11 @@ class Agent:
 
         if not self.stopped:
             await self.log("Step budget reached.")
+
+    async def to_overlay(self, msg: dict) -> None:
+        if msg.get("type") == "cursor":
+            self.cursor_at = (msg["x"], msg["y"])
+        await self._send_overlay(msg)
 
     def teach_first(self, args: dict) -> None:
         """Do it is a lesson: the first time, type the header row, the first data row and the first
@@ -693,7 +700,9 @@ class Agent:
             elif name == "drag" and drop:
                 await asyncio.to_thread(screen.drag, *point, *drop)
             elif name == "type":
-                if point:  # focus the field first
+                if self.prev_action == "double_click":  # already editing: replace, don't insert at the caret
+                    await asyncio.to_thread(screen.press, "cmd+a")
+                elif point:  # focus the field first
                     await asyncio.to_thread(screen.click, *point)
                     await asyncio.sleep(0.2)
                 await asyncio.to_thread(screen.type_text, args.get("text", ""))
@@ -701,6 +710,7 @@ class Agent:
                 await asyncio.to_thread(screen.press, args.get("keys", ""))
             elif name == "scroll":
                 await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
+            self.prev_action = name
             await asyncio.sleep(0.4)  # let the app react
             if self.partial:
                 self.partial = False
