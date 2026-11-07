@@ -64,7 +64,7 @@ def main() -> int:
             continue
         try:
             print(f"[ OK ] {name}: {fn()}")
-        except Exception as e:  # report and keep going
+        except Exception as e:  # noqa: BLE001 - report and keep going
             failed += 1
             print(f"[FAIL] {name}: {type(e).__name__}: {e}")
     return 1 if failed else 0
