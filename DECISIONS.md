@@ -2,6 +2,9 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 12:55** Fixes from live tests: the agent ignores its own control page; frontmost app is
+  read from the live window list (NSWorkspace went stale); TTS is cut before listening and only
+  the first sentence is spoken (the mic was transcribing our own voice).
 - **Sat 12:50** Voice is live: **⌃⌥Space** (Control+Option+Space) → "Listening…" pill → Gladia
   (FR/EN) → task starts in the current app, no countdown. Press again to stop. Saying "do it /
   fais-le / à ma place" picks DO, "show me / montre-moi" picks GUIDE, otherwise the page toggle.
