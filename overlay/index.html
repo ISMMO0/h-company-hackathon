@@ -52,14 +52,14 @@
   }
   #panel.flip-x #box { left: auto; right: 10px; }
   #panel.flip-y #box { top: auto; bottom: 10px; }
-  #card, #details {
+  #card, #details, #answer {
     padding: 8px 10px;
     border-radius: 10px;
     background: rgba(20, 20, 24, 0.9);
     color: #fff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
-  #card .row { display: flex; align-items: flex-start; gap: 8px; }
+  .row { display: flex; align-items: flex-start; gap: 8px; }
   #text {
     flex: 1;
     overflow: hidden;
@@ -68,6 +68,13 @@
     -webkit-line-clamp: 3;
     overflow-wrap: anywhere;
   }
+  #why {
+    margin-top: 2px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    overflow-wrap: anywhere;
+  }
+  #why:empty { display: none; }
   .state {
     display: flex;
     align-items: center;
@@ -77,7 +84,7 @@
     color: rgba(255, 255, 255, 0.55);
   }
   .buttons { display: flex; gap: 6px; margin-top: 8px; }
-  #card button {
+  #box button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -91,14 +98,14 @@
     font: 12px/1 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
     cursor: pointer;
   }
-  #card button:hover { background: rgba(255, 255, 255, 0.22); }
-  #card button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  #card #chevron { padding: 0; background: transparent; }
+  #box button:hover { background: rgba(255, 255, 255, 0.22); }
+  #box button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #box #chevron, #box #answer-close { padding: 0; background: transparent; }
   #chevron svg { transition: transform 150ms; }
   #card.collapsed { padding: 3px; }
-  #card.collapsed #text, #card.collapsed .state, #card.collapsed .buttons { display: none; }
+  #card.collapsed #text, #card.collapsed #why, #card.collapsed .state, #card.collapsed .buttons { display: none; }
   #card.collapsed #chevron svg { transform: rotate(-90deg); }
-  #stop { font-size: 15px; }
+  #stop, #answer-close { font-size: 15px; }
   #details-button.on { background: rgba(255, 62, 165, 0.35); }
   #details {
     max-height: 320px;
@@ -122,7 +129,7 @@
   /* Listening mode: dot + hint, live text, Send / Cancel instead of the step and its buttons. */
   #listen { display: none; }
   #panel.listening #listen { display: block; }
-  #panel.listening .row, #panel.listening #state, #panel.listening #buttons { display: none; }
+  #panel.listening .row, #panel.listening #why, #panel.listening #state, #panel.listening #buttons { display: none; }
   #panel.listening #card { padding: 8px 10px; }
   #listen .state { margin-top: 0; }
   #live {
@@ -133,6 +140,28 @@
     overflow-wrap: anywhere;
   }
   #panel.paused:not(.listening) #box { opacity: 0.6; }
+  /* Answer card: replaces the step card while it is open (no task runs). */
+  #answer { display: none; }
+  #panel.answer #answer { display: block; }
+  #panel.answer #card, #panel.answer #details { display: none; }
+  #answer-text {
+    flex: 1;
+    max-height: 7.8em; /* ~6 lines */
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+  #sources:empty, #offer.hidden { display: none; }
+  #sources { margin-top: 6px; }
+  .source {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .source:hover { color: #fff; }
+  #offer-text { margin-top: 8px; }
   .dot {
     flex: none;
     width: 8px;
@@ -162,6 +191,7 @@
         <div id="text"></div>
         <button id="chevron" title="Collapse"><svg viewBox="0 0 12 12"><path d="M2 4l4 4 4-4"/></svg></button>
       </div>
+      <div id="why"></div>
       <div id="state" class="state"></div>
       <div id="buttons" class="buttons">
         <button id="next" title="I did it / skip">Next</button>
@@ -183,6 +213,20 @@
       <div id="plan"></div>
       <div id="chat"></div>
     </div>
+    <div id="answer">
+      <div class="row">
+        <div id="answer-text"></div>
+        <button id="answer-close" title="Close">×</button>
+      </div>
+      <div id="sources"></div>
+      <div id="offer" class="hidden">
+        <div id="offer-text"></div>
+        <div class="buttons">
+          <button id="show-me">Show me</button>
+          <button id="do-it">Do it</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <script>
@@ -192,6 +236,7 @@
   const box = document.getElementById('box');
   const card = document.getElementById('card');
   const text = document.getElementById('text');
+  const why = document.getElementById('why');
   const state = document.getElementById('state');
   const modeButton = document.getElementById('mode');
   const detailsButton = document.getElementById('details-button');
@@ -199,17 +244,25 @@
   const plan = document.getElementById('plan');
   const chat = document.getElementById('chat');
   const live = document.getElementById('live');
+  const answerText = document.getElementById('answer-text');
+  const sources = document.getElementById('sources');
+  const offer = document.getElementById('offer');
+  const offerText = document.getElementById('offer-text');
 
   const STATES = { thinking: 'Thinking…', waiting: 'Your turn', acting: 'Doing it…', paused: 'Paused', done: 'Done' };
   const WHO = { you: 'You', shadow: 'Shadow' };
   const PANEL_W = 320; // card max width + offset, used to keep it on screen
   const CHAT_KEEP = 20;
   const CHAT_SHOW = 6;
+  const SOURCES_SHOW = 3;
+  const ANSWER_MS = 30000;
   let mode = 'guide';
   let panelOn = false;
   let doneTimer = null;
   let panelPos = { x: 0, y: 0 };
   let listeningOn = false;
+  let answerOn = false;
+  let answerTimer = null;
   let chatLines = [];
 
   function place(x, y) {
@@ -224,11 +277,13 @@
     modeButton.textContent = mode === 'do' ? 'Do it' : 'Guide';
   }
 
-  // The panel is open while a step is shown or the brain listens; listening takes over the card.
+  // The panel is open while a step is shown, the brain listens or an answer is shown; listening
+  // and the answer card take over the step card.
   function render() {
     panel.classList.toggle('listening', listeningOn);
-    panel.classList.toggle('hidden', !(panelOn || listeningOn));
-    if (!panelOn && !listeningOn) window.overlay.interactive(false);
+    panel.classList.toggle('answer', answerOn);
+    panel.classList.toggle('hidden', !(panelOn || listeningOn || answerOn));
+    if (!panelOn && !listeningOn && !answerOn) window.overlay.interactive(false);
     place(panelPos.x, panelPos.y);
   }
 
@@ -263,6 +318,37 @@
     render();
   }
 
+  function hideAnswer() {
+    answerOn = false;
+    clearTimeout(answerTimer);
+    render();
+  }
+
+  function showAnswer(msg) {
+    answerText.textContent = msg.text || '';
+    answerText.scrollTop = 0;
+    sources.innerHTML = '';
+    for (const source of (msg.sources || []).slice(0, SOURCES_SHOW)) {
+      const div = document.createElement('div');
+      div.className = 'source';
+      div.textContent = source.title || source.url || '';
+      div.title = source.url || '';
+      div.addEventListener('click', () => window.overlay.open(source.url));
+      sources.appendChild(div);
+    }
+    offerText.textContent = msg.offer || '';
+    offer.classList.toggle('hidden', !msg.offer);
+    answerOn = true;
+    render();
+    clearTimeout(answerTimer);
+    answerTimer = setTimeout(hideAnswer, ANSWER_MS);
+  }
+
+  function followup(mode) {
+    window.overlay.send({ type: 'followup', mode });
+    hideAnswer();
+  }
+
   box.addEventListener('mouseenter', () => window.overlay.interactive(true));
   box.addEventListener('mouseleave', () => window.overlay.interactive(false));
   document.getElementById('chevron').addEventListener('click', () => card.classList.toggle('collapsed'));
@@ -271,6 +357,9 @@
   document.getElementById('stop').addEventListener('click', () => window.overlay.send({ type: 'stop' }));
   document.getElementById('send').addEventListener('click', () => window.overlay.send({ type: 'hotkey' }));
   document.getElementById('cancel').addEventListener('click', () => window.overlay.send({ type: 'stop' }));
+  document.getElementById('answer-close').addEventListener('click', hideAnswer);
+  document.getElementById('show-me').addEventListener('click', () => followup('guide'));
+  document.getElementById('do-it').addEventListener('click', () => followup('do'));
   modeButton.addEventListener('click', () => {
     setMode(mode === 'do' ? 'guide' : 'do');
     window.overlay.send({ type: 'mode', mode });
@@ -296,8 +385,10 @@
         cursor.classList.remove('hidden');
         break;
       case 'step':
+        hideAnswer();
         if (msg.x !== undefined) place(msg.x, msg.y);
         text.textContent = msg.text || '';
+        why.textContent = msg.why || '';
         state.textContent = STATES[msg.state] || '';
         panel.classList.toggle('paused', msg.state === 'paused');
         if (msg.mode) setMode(msg.mode);
@@ -321,7 +412,7 @@
         break;
       case 'show':
         cursor.classList.remove('hidden');
-        if (panelOn || listeningOn) panel.classList.remove('hidden');
+        if (panelOn || listeningOn || answerOn) panel.classList.remove('hidden');
         break;
       case 'clear':
         if (!msg.keepCursor) cursor.classList.add('hidden');
@@ -329,11 +420,19 @@
         chatLines = [];
         renderPlan([]);
         renderChat();
+        hideAnswer();
         hidePanel();
+        break;
+      case 'answer':
+        if (msg.x !== undefined) place(msg.x, msg.y);
+        showAnswer(msg);
         break;
       case 'listening':
         listeningOn = Boolean(msg.on);
-        if (listeningOn) live.textContent = '';
+        if (listeningOn) {
+          live.textContent = '';
+          hideAnswer();
+        }
         if (msg.x !== undefined) place(msg.x, msg.y);
         render();
         break;

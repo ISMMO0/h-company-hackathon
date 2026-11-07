@@ -128,7 +128,7 @@ function showStep(msg) {
   stopFollow();
   lastStep = msg;
   let win;
-  let step = { type: 'step', text: msg.text || '', mode: msg.mode, state: msg.state };
+  let step = { type: 'step', text: msg.text || '', why: msg.why || '', mode: msg.mode, state: msg.state };
   if (lastCursor) {
     win = displayWindowFor(lastCursor.x, lastCursor.y);
   } else {
@@ -167,6 +167,18 @@ function setListening(on) {
   });
 }
 
+// The answer card opens at the mouse when no task runs, else next to the panel where it is.
+function showAnswer(msg) {
+  if (lastCursor || lastStep) {
+    broadcast(msg);
+    return;
+  }
+  const { x, y } = screen.getCursorScreenPoint();
+  const win = displayWindowFor(x, y);
+  const { x: ox, y: oy } = win.display.bounds;
+  win.webContents.send('brain', { ...msg, x: x - ox + FOLLOW_OFFSET, y: y - oy + FOLLOW_OFFSET });
+}
+
 function send(msg) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 }
@@ -176,9 +188,14 @@ ipcMain.on('hidden', () => {
   if (pendingHidden > 0 && --pendingHidden === 0) send({ type: 'hidden' });
 });
 
-const PANEL_MESSAGES = new Set(['next', 'mode', 'mic', 'stop', 'hotkey']);
+const PANEL_MESSAGES = new Set(['next', 'mode', 'mic', 'stop', 'hotkey', 'followup']);
 ipcMain.on('panel', (_event, msg) => {
   if (msg && PANEL_MESSAGES.has(msg.type)) send(msg);
+});
+
+// Answer card sources open in the default browser, never inside the overlay.
+ipcMain.on('open', (_event, url) => {
+  if (typeof url === 'string' && /^https?:\/\//.test(url)) shell.openExternal(url);
 });
 
 // Click-through everywhere except while the pointer is over the panel.
@@ -213,6 +230,9 @@ function handleMessage(msg) {
       break;
     case 'listening':
       setListening(Boolean(msg.on));
+      break;
+    case 'answer':
+      showAnswer(msg);
       break;
     case 'transcript':
     case 'plan':
