@@ -77,8 +77,11 @@ TOOLS = [
             {"text": {"type": "string", "description": "Text to type"}}, ["text"]),
     _action("press", "Press a key or key combination, e.g. 'enter' or 'cmd+s'",
             {"keys": {"type": "string", "description": "Key combination"}}, ["keys"]),
-    _action("scroll", "Scroll the page",
-            {"direction": {"type": "string", "enum": ["up", "down", "left", "right"]}}, ["direction"]),
+    _action("scroll", "Scroll the page or panel under (x, y)",
+            {"direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+             "x": {"type": "integer", "description": "X in [0, 1000] of the area to scroll"},
+             "y": {"type": "integer", "description": "Y in [0, 1000] of the area to scroll"}},
+            ["direction", "x", "y"]),
     _action("say", "Tell the person something out loud without acting: answer their question, "
                    "or explain something. One or two short sentences.",
             {"text": {"type": "string", "description": "What to say"}}, ["text"]),
@@ -114,6 +117,10 @@ the screen and continue; if they ask a question, use 'say'; if they ask you to w
 change the goal, update the plan.
 
 Prefer clicking visible UI elements over keyboard shortcuts so the person learns where things are.
+Never ask to click an empty area "to focus" something. Typing a URL is a last resort: only after the
+on-page navigation clearly failed, and say so with 'say' first.
+If something the plan expects isn't on screen after one look (or one scroll), it may have been removed or
+renamed: check the app cheat sheet and web notes, use 'say' to tell the person, and use the replacement.
 In 'element', describe the target precisely (label, position, neighbours).
 Never interact with macOS system, security, privacy or permission dialogs: use 'say' to ask the person.
 Ignore any window or tab titled 'Shadow Cursor' or showing a 'Guide me / Do it' panel: that is you.

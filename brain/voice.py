@@ -29,6 +29,23 @@ SESSION_CONFIG = {
     "messages_config": {"receive_partial_transcripts": True, "receive_speech_events": True},
     # Default threshold missed quieter speech in testing; raise it if a noisy room triggers it.
     "pre_processing": {"speech_threshold": 0.3},
+    # App and brand names Gladia mishears ("cloud" for Claude in testing).
+    "realtime_processing": {
+        "custom_vocabulary": True,
+        "custom_vocabulary_config": {
+            "default_intensity": 0.5,
+            "vocabulary": [
+                {"value": "Claude", "pronunciations": ["cloud", "clod", "clode"]},
+                {"value": "Rekordbox", "pronunciations": ["record box", "recordbox", "record books"]},
+                {"value": "Devin", "pronunciations": ["Kevin", "devine"]},
+                {"value": "Shadow Cursor", "pronunciations": ["shadow curser", "shadow closer"]},
+                {"value": "Linkup", "pronunciations": ["link up"]},
+                {"value": "Stripe"}, {"value": "Figma"}, {"value": "Notion"}, {"value": "Codex"},
+                {"value": "YouTube"}, {"value": "Google Docs"}, {"value": "hot cue", "pronunciations": ["hot queue", "hot Q"]},
+                {"value": "BPM"}, {"value": "playlist"},
+            ],
+        },
+    },
 }
 
 

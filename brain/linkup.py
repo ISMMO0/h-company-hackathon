@@ -43,7 +43,9 @@ def playbook(task: str, app: str, where: str = "", timeout: float = 6) -> dict:
         data = _post({
             "q": f"On a Mac, the exact UI path to: {task}. {here}"
                  "Use the app's or website's own navigation (menus, sidebar, buttons), not URL "
-                 "shortcuts. Give 3 to 8 concrete steps with the exact menu, button or field names.",
+                 "shortcuts. Give 3 to 8 concrete steps with the exact menu, button or field names, "
+                 "as the interface is TODAY: if a feature was removed or renamed, say so in 'note' "
+                 "and give the current replacement.",
             "depth": "fast", "outputType": "structured",
             "structuredOutputSchema": json.dumps(PLAYBOOK_SCHEMA),
         }, timeout)

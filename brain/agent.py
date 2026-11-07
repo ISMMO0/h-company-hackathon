@@ -22,7 +22,7 @@ from pathlib import Path
 
 from PIL import ImageDraw
 
-from brain import linkup, planner, router, screen, voice
+from brain import knowledge, linkup, planner, router, screen, voice
 
 try:
     from brain.memory import Memory
@@ -425,6 +425,12 @@ class Agent:
 
     async def _loop(self, task: str, mode: str, app: str) -> None:
         pl = planner.Planner(task, mode, self.brief or self.memory.context())
+        sheet = knowledge.cached(app)
+        if sheet:
+            pl.note(f"App cheat sheet for {app} (up to date; trust it over guesses):\n{sheet}")
+            await self.log(f"📘 {app} cheat sheet loaded")
+        else:
+            asyncio.create_task(asyncio.to_thread(knowledge.build, app, getattr(self, "current_title", "")))
         roadmap: list[str] = []
         research = asyncio.create_task(self.research(pl, task, app))  # joins the plan when ready
         w, h = screen.screen_size()
@@ -432,6 +438,7 @@ class Agent:
         last_step = 0
         actions = 0
         pixel_stales = 0  # at most one "screen still changing" re-plan per step (videos animate)
+        same_step, last_scroll = 0, ""
 
         for _turn in range(MAX_TURNS):
             if self.stopped or actions >= MAX_ACTIONS:
@@ -484,7 +491,8 @@ class Agent:
                 pl.result(action, "")
                 continue
 
-            if pl.step and pl.step != last_step:
+            moved = bool(pl.step and pl.step != last_step)
+            if moved:
                 for s in (pl.plan or roadmap)[max(last_step - 1, 0):pl.step - 1]:
                     self.memory.add_step(s, "done")
                 last_step = pl.step
@@ -510,8 +518,13 @@ class Agent:
 
             actions += 1
             pixel_stales = 0
+            # No progress: 5 actions on the same plan step, or scrolling back and forth.
+            same_step = 0 if moved or name in ("say", "wait") else same_step + 1
+            flip = name == "scroll" and last_scroll and args.get("direction") != last_scroll
+            last_scroll = args.get("direction", "") if name == "scroll" else last_scroll
             t1 = time.perf_counter()
-            if repeats >= 2 and name not in ("wait",):
+            if (repeats >= 2 or same_step >= 5 or flip) and name not in ("wait", "say"):
+                same_step, last_scroll = 0, ""
                 result = await self.stuck(pl, args)
                 repeats = 0
             else:
@@ -553,6 +566,10 @@ class Agent:
         label = label_of(name, args)
         why = str(args.get("why") or "")
         point = None
+        if name == "scroll" and "x" in args and "y" in args:
+            point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
+            self._last_point = point
+            await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
         if name == "click":
             t = time.perf_counter()
             nx, ny = await asyncio.to_thread(planner.point, full, args.get("element", ""),
@@ -584,14 +601,14 @@ class Agent:
             elif name == "press":
                 await asyncio.to_thread(screen.press, args.get("keys", ""))
             elif name == "scroll":
-                await asyncio.to_thread(screen.scroll, args.get("direction", "down"))
+                await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
             await asyncio.sleep(0.6)  # let the app react
             return "Done.", "did"
 
         await self.panel(label, "waiting", why)
         at = f" @({point[0]:.0f},{point[1]:.0f})" if point else ""
         await self.log(f"show {name}{at} {short_args(args)}")
-        reason = await self.watch(pixels_ok)
+        reason = await self.watch(pixels_ok, timeout=6 if name == "scroll" else None)
         return result_text(reason), reason
 
     async def research(self, pl, task: str, app: str) -> list[str]:
@@ -640,7 +657,7 @@ class Agent:
         why = await self.watch(False)
         return f"You proposed the same action 3 times. {result_text(why)} Try a different approach."
 
-    async def watch(self, pixels_ok: bool) -> str:
+    async def watch(self, pixels_ok: bool, timeout: float | None = None) -> str:
         """Wait for the person: returns 'next' | 'spoke' | 'mode' | 'click' | 'key' | 'window'
         | 'pixels' | 'stopped'. No model calls here."""
         self.poke.clear()
@@ -650,6 +667,8 @@ class Agent:
         win0 = screen.front_window()
         away_since = None
         while not self.stopped:
+            if timeout and time.time() - start > timeout:
+                return "timeout"  # e.g. a scroll that moved nothing: look again
             if self.events:
                 kind = self.events[0][0]
                 if kind == "next":
@@ -754,6 +773,8 @@ def result_text(why: str) -> str:
         "spoke": "The person spoke instead; see their message. The step may not be done.",
         "mode": "The mode changed; see the message.",
         "stopped": "Stopped.",
+        "timeout": "Nothing changed on screen for a while. Look again: maybe the step can't be done "
+                   "this way (wrong area, feature moved or removed).",
     }.get(why, f"The person acted ({why}). Judge progress from the new screenshot and continue "
                "from where they are now; skip steps that are already done.")
 

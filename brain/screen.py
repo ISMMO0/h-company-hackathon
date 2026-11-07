@@ -187,7 +187,10 @@ def press(keys: str) -> None:
         time.sleep(0.02)
 
 
-def scroll(direction: str, amount: int = 5) -> None:
+def scroll(direction: str, amount: int = 5, at: tuple[float, float] | None = None) -> None:
+    if at:  # scroll events go to whatever is under the mouse
+        _post(Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, at, 0))
+        time.sleep(0.05)
     dy = amount if direction == "up" else -amount
     dx = amount if direction == "left" else -amount if direction == "right" else 0
     if direction in ("left", "right"):
