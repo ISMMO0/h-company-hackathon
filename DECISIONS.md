@@ -2,6 +2,9 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 20:45** Do it tested on Google Sheets (docs/test-reports/2026-11-07-sheets-do-it.md): 3-row budget
+  table now done in ~10 s (was 1 row in 4 min) thanks to whole-row typing (\t / \n), "no progress" based
+  on an unchanged screen, noise ignored. New gestures: right-click, double-click, drag.
 - **Sat 20:00** Stripe in the product (Devin, PR #11): Shadow Pro, free quota per day (default 20,
   `SHADOW_FREE_TASKS=2` to show the paywall in the demo), Stripe Checkout in test mode only, paywall
   card with the checkout link. Also: Gladia custom vocabulary (Claude, Rekordbox, Devin, hot cue…);
