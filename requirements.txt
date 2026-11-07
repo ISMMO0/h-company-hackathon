@@ -5,3 +5,4 @@ aiohttp
 openai
 pillow
 pyobjc-framework-Quartz
+sounddevice

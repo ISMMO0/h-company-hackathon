@@ -39,6 +39,33 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
   #label:empty { display: none; }
+  #listening {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    background: rgba(20, 20, 24, 0.9);
+    color: #fff;
+    font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+  #listening.hidden { display: none; }
+  #listening .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff3ea5;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.8); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -49,9 +76,11 @@
   </svg>
   <div id="label"></div>
 </div>
+<div id="listening" class="hidden"><span class="dot"></span>Listening…</div>
 <script>
   const cursor = document.getElementById('cursor');
   const label = document.getElementById('label');
+  const listening = document.getElementById('listening');
 
   window.overlay.onMessage((msg) => {
     switch (msg.type) {
@@ -70,6 +99,13 @@
       case 'clear':
         cursor.classList.add('hidden');
         label.textContent = '';
+        break;
+      case 'listening':
+        if (msg.on) {
+          listening.style.left = `${msg.x + 18}px`;
+          listening.style.top = `${msg.y + 18}px`;
+        }
+        listening.classList.toggle('hidden', !msg.on);
         break;
     }
   });

@@ -1,9 +1,10 @@
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, screen, ipcMain } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 
 const BRAIN_URL = 'ws://127.0.0.1:8765/ws/overlay';
 const RECONNECT_MS = 1000;
+const HOTKEY = 'Alt+Space';
 
 let windows = []; // one per display, same order as screen.getAllDisplays()
 let lastCursor = null; // { x, y, label } in global screen points
@@ -68,6 +69,20 @@ function moveCursor({ x, y, label }) {
   win.webContents.send('brain', { type: 'cursor', x: x - ox, y: y - oy, label: label || '' });
 }
 
+function setListening(on) {
+  if (!on) {
+    broadcast({ type: 'listening', on: false });
+    return;
+  }
+  const { x, y } = screen.getCursorScreenPoint();
+  const win = displayWindowFor(x, y);
+  const { x: ox, y: oy } = win.display.bounds;
+  for (const other of windows) {
+    if (other !== win) other.webContents.send('brain', { type: 'listening', on: false });
+  }
+  win.webContents.send('brain', { type: 'listening', on: true, x: x - ox, y: y - oy });
+}
+
 function send(msg) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 }
@@ -92,6 +107,9 @@ function handleMessage(msg) {
     case 'clear':
       lastCursor = null;
       broadcast({ type: 'clear' });
+      break;
+    case 'listening':
+      setListening(Boolean(msg.on));
       break;
     default:
       break;
@@ -122,6 +140,11 @@ app.whenReady().then(() => {
   screen.on('display-removed', rebuildWindows);
   screen.on('display-metrics-changed', rebuildWindows);
   connect();
+  if (!globalShortcut.register(HOTKEY, () => send({ type: 'hotkey' }))) {
+    console.error(`could not register ${HOTKEY}`);
+  }
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 app.on('window-all-closed', () => {});
