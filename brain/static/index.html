@@ -298,7 +298,17 @@
   $("swatches").onclick = (e) => { const b = e.target.closest(".sw[data-c]"); if (b) saveColor(b.dataset.c); };
   $("anycolor").oninput = (e) => applyColor(e.target.value);
   $("anycolor").onchange = (e) => saveColor(e.target.value);
-  $("get").onclick = () => $("custom").classList.toggle("on");
+  $("get").onclick = async () => {
+    const label = $("get").lastChild;
+    if (!$("custom").classList.contains("on")) {
+      label.textContent = "Starting your cursor…";
+      try {
+        const r = await (await fetch("/overlay/start", { method: "POST" })).json();
+        label.textContent = r.running ? "Your Shadow Cursor is on" : "Get your Shadow Cursor";
+      } catch { label.textContent = "Get your Shadow Cursor"; }
+    }
+    $("custom").classList.toggle("on");
+  };
   $("close").onclick = () => $("custom").classList.remove("on");
   fetch("/theme").then((r) => r.json()).then((t) => applyColor(t.color)).catch(() => applyColor("#ff3ea5"));
 
