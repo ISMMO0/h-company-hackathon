@@ -59,6 +59,8 @@ class Agent:
         self.full = None
         self.current_task = ""
         self.current_app = ""
+        self.shown: dict[str, int] = {}  # Do it: rows/formulas already typed step by step this task
+        self.partial = False
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
         self.open_mic: voice.Listener | None = None  # open mic for the running task
@@ -253,6 +255,9 @@ class Agent:
         if busy and is_stop(text):  # no round trip for the obvious one
             await self.on_stop()
             return
+        if busy and is_noise(text):  # "I", "Thank you." from the TV: never re-plan on it
+            await self.log("→ ignore (too short)")
+            return
         app = self.current_app if busy else screen.front_window()[0]
         unfinished, unfinished_mode = self.last_unfinished()
         if not busy:
@@ -443,6 +448,7 @@ class Agent:
                 return
             app, title = screen.front_window()
             self.current_task, self.current_app = task, app
+            self.shown, self.partial = {}, False
             self.task_apps = {app}
             self.current_title = title
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
@@ -541,6 +547,9 @@ class Agent:
             if name == "answer":
                 text = args.get("content", "Done.")
                 await self.log(f"✓ {text}")
+                if self._last_point:  # drop the last step's bubble ("Type 5 here")
+                    await self.to_overlay({"type": "cursor", "x": self._last_point[0],
+                                           "y": self._last_point[1], "label": ""})
                 await self.panel(text, "done")
                 await self.chat("shadow", text)
                 self.memory.finish_task(text)
@@ -586,12 +595,30 @@ class Agent:
         if not self.stopped:
             await self.log("Step budget reached.")
 
+    def teach_first(self, args: dict) -> None:
+        """Do it is a lesson: the first time, type the header row, the first data row and the first
+        formula one at a time (each one narrated), then let the rest go in one action."""
+        text = args.get("text", "")
+        if "\n" not in text.rstrip("\n") or FAST_WORDS.search(self.current_task or ""):
+            return
+        kind = "formula" if text.lstrip().startswith("=") else "row"
+        if self.shown.get(kind, 0) >= (1 if kind == "formula" else 2):
+            return
+        self.shown[kind] = self.shown.get(kind, 0) + 1
+        args["text"] = text.split("\n", 1)[0] + "\n"
+        args["why"] = (args.get("why") or "") + (" Let's do the first one together." if kind == "formula"
+                                                  else " One row at a time, so you can follow.")
+        self.partial = True
+
     async def act(self, pl, name, args, full, w, h, repeat, pixels_ok) -> tuple[str, str]:
         """Show the step, then do it (DO) or watch the person (GUIDE). Returns (tool result, why)."""
         self._t_point = 0.0
         self._last_point = None
         if self.mode == "do" and screen.frontmost_app() in screen.SYSTEM_APPS:
             return await self.blocked(screen.frontmost_app()), "next"
+
+        if name == "type" and self.mode == "do":
+            self.teach_first(args)
 
         if name == "say":
             text = args.get("text", "")
@@ -675,6 +702,10 @@ class Agent:
             elif name == "scroll":
                 await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
             await asyncio.sleep(0.4)  # let the app react
+            if self.partial:
+                self.partial = False
+                return ("Typed only the first line, so the person sees it step by step. "
+                        "Type the remaining lines next (the cursor is on the next row)."), "did"
             return "Done.", "did"
 
         await self.panel(label, "waiting", why)
@@ -862,6 +893,18 @@ def is_stop(text: str) -> bool:
     """Only a bare 'stop' stops: 'stop the video at 2:00' is a task, not a command."""
     return text.lower().strip(" .!?,") in STOP_PHRASES
 
+
+
+FAST_WORDS = re.compile(r"\b(fast|quick(ly)?|vite|rapide(ment)?|hurry|no need to explain)\b", re.IGNORECASE)
+CONTROL_WORDS = {"stop", "wait", "attends", "pause", "next", "suivant", "continue", "go", "no", "non", "yes",
+                 "oui", "faster", "vite", "slower", "doucement", "why", "pourquoi", "help", "aide", "arrête",
+                 "arrete", "back", "retour", "skip", "again", "encore", "explain", "explique"}
+
+
+def is_noise(text: str) -> bool:
+    """One or two words with no command in them: TV, music or someone else, not the person."""
+    words = re.findall(r"[\w']+", text.lower())
+    return len(words) <= 2 and not any(w in CONTROL_WORDS for w in words)
 
 
 def narrate(name: str, args: dict, why: str) -> str:
