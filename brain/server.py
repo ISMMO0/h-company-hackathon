@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
-from AppKit import NSWorkspace
 from dotenv import load_dotenv
 from PIL import ImageDraw
 
@@ -56,9 +55,14 @@ class Brain:
         await self.to_ui({"type": "log", "text": text})
 
     def speak(self, text: str) -> None:
+        self.hush()
+        # Speak only the first sentence: long replies were picked up by the mic next time.
+        first = text.split(". ")[0].strip()
+        self.say_proc = subprocess.Popen(["say", "-r", "190", first[:160]])
+
+    def hush(self) -> None:
         if self.say_proc and self.say_proc.poll() is None:
             self.say_proc.terminate()
-        self.say_proc = subprocess.Popen(["say", "-r", "190", text])
 
     async def snapshot(self):
         """Screenshot without the pink cursor in it."""
@@ -94,7 +98,7 @@ class Brain:
             for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
-            app = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
+            app = screen.frontmost_app()
             await self.to_ui({"type": "status", "text": f"Working in {app}"})
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
             self.speak("On it.")
@@ -134,7 +138,7 @@ class Brain:
             await self.to_ui({"type": "status", "text": "Idle"})
 
     async def act(self, mode, name, args, img, w, h, stop) -> str:
-        front = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
+        front = screen.frontmost_app()
         if mode == "do" and front in screen.SYSTEM_APPS:
             return await self.blocked(front)
         if name == "click":
@@ -214,6 +218,8 @@ class Brain:
             self.speak("Stopped.")
             return
         self.listening = True
+        self.hush()  # never transcribe our own voice
+        await asyncio.sleep(0.15)
         await self.to_overlay({"type": "listening", "on": True})
         await self.to_ui({"type": "status", "text": "Listening…"})
         try:

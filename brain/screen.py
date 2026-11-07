@@ -58,6 +58,20 @@ SYSTEM_APPS = {
 }
 
 
+def frontmost_app() -> str:
+    """App owning the topmost normal window. NSWorkspace goes stale in a process without a
+    Cocoa run loop, so read the live window list instead."""
+    windows = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID)
+    for w in windows:  # front to back
+        name = w.get("kCGWindowOwnerName", "")
+        if w.get("kCGWindowLayer", 0) == 0 and w.get("kCGWindowAlpha", 1) > 0 and \
+                name not in ("Electron", "Window Server", "Dock"):
+            return name
+    return ""
+
+
 def window_owner_at(x: float, y: float) -> str:
     """Name of the app whose window is topmost at (x, y), in global points."""
     windows = Quartz.CGWindowListCopyWindowInfo(
