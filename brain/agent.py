@@ -594,6 +594,15 @@ class Agent:
         label = label_of(name, args)
         why = str(args.get("why") or "")
         point = None
+        if name == "type" and "x" in args and "y" in args:
+            t = time.perf_counter()
+            nx, ny = await asyncio.to_thread(planner.point, full, args.get("element") or "the text field",
+                                             (args["x"], args["y"]))
+            self._t_point = time.perf_counter() - t
+            point = (nx / 1000 * w, ny / 1000 * h)
+            self._last_point = point
+            await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1],
+                                   "label": short(f'Type "{args.get("text", "")}" here')})
         if name == "scroll" and "x" in args and "y" in args:
             point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
             self._last_point = point
@@ -625,6 +634,9 @@ class Agent:
             if name == "click":
                 await asyncio.to_thread(screen.click, *point)
             elif name == "type":
+                if point:  # focus the field first
+                    await asyncio.to_thread(screen.click, *point)
+                    await asyncio.sleep(0.2)
                 await asyncio.to_thread(screen.type_text, args.get("text", ""))
             elif name == "press":
                 await asyncio.to_thread(screen.press, args.get("keys", ""))
@@ -833,7 +845,8 @@ def label_of(name: str, args: dict) -> str:
     if name == "click":
         return f"Click {args.get('element', '')}".strip()
     if name == "type":
-        return f'Type "{args.get("text", "")}"'
+        where = f" in {args['element']}" if args.get("element") else ""
+        return f'Type "{args.get("text", "")}"{where}'
     if name == "press":
         return f"Press {args.get('keys', '')}"
     if name == "scroll":
