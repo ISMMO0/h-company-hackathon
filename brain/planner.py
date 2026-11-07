@@ -7,6 +7,7 @@ Two kinds of calls per step:
 """
 
 import base64
+import concurrent.futures as cf
 import io
 import json
 import os
@@ -27,7 +28,9 @@ _client: OpenAI | None = None
 def client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(base_url="https://api.hcompany.ai/v1", api_key=os.environ["HAI_API_KEY"])
+        # Never wait forever on one request: a stuck call froze a whole task in testing.
+        _client = OpenAI(base_url="https://api.hcompany.ai/v1", api_key=os.environ["HAI_API_KEY"],
+                         timeout=12, max_retries=0)
     return _client
 
 
@@ -142,15 +145,41 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
                 chunk.pop("image_url", None)
 
 
-def _create(messages: list, tools: list | None = None, **kw):
-    params = {"model": MODEL, "messages": messages, "temperature": 0.8 if EFFORT != "none" else 0.0}
+HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "3.0"))
+_pool = cf.ThreadPoolExecutor(max_workers=4)
+
+
+def _create_hedged(messages: list, tools: list):
+    """The planning call, hedged: if the normal call (thinking 'low') isn't back after
+    HEDGE_AFTER s, fire a fast one (no thinking) in parallel and take whichever answers first.
+    Holo sometimes takes 9 s+ or hangs; this keeps steps around 1-4 s."""
+    first = _pool.submit(_create, messages, tools)
+    try:
+        return first.result(timeout=HEDGE_AFTER)
+    except cf.TimeoutError:
+        pass
+    except Exception:  # noqa: BLE001 - failed fast: try the quick call alone
+        return _create(messages, tools, effort="none")
+    second = _pool.submit(_create, messages, tools, effort="none")
+    pending = {first, second}
+    while pending:
+        done, pending = cf.wait(pending, return_when=cf.FIRST_COMPLETED)
+        for f in done:
+            if f.exception() is None:
+                return f.result()
+    return second.result()  # both failed: raise the last error
+
+
+def _create(messages: list, tools: list | None = None, effort: str | None = None, **kw):
+    effort = effort or EFFORT
+    params = {"model": MODEL, "messages": messages, "temperature": 0.8 if effort != "none" else 0.0}
     if tools:
         params.update(tools=tools, tool_choice="required")
-    if EFFORT == "none":
+    if effort == "none":
         params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
     else:
         params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
-        params["reasoning_effort"] = EFFORT
+        params["reasoning_effort"] = effort
     params.update(kw)
     return client().chat.completions.create(**params)
 
@@ -178,7 +207,7 @@ class Planner:
         msgs = [*self.lean(), obs]
         trim_to_last_n_images(msgs)
         t0 = time.perf_counter()
-        resp = _create(msgs, TOOLS)
+        resp = _create_hedged(msgs, TOOLS)
         dt = time.perf_counter() - t0
         msg = resp.choices[0].message
         calls = msg.tool_calls or []

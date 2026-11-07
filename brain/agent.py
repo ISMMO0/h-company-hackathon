@@ -452,8 +452,12 @@ class Agent:
             job = asyncio.create_task(asyncio.to_thread(pl.next, small, f"{app_now}: {title_now}"))
             base_thumb = await asyncio.to_thread(screen.thumb) if pixel_stales < 1 else None
             stale = None
+            waited, told = time.perf_counter(), False
             while not job.done():
                 await asyncio.sleep(0.12)
+                if not told and time.perf_counter() - waited > 3:
+                    told = True  # never look frozen: say we're still on it
+                    await self.panel("Still looking at your screen…", "thinking")
                 stale = self.events and "spoke" or changed_since(mark, self.task_apps)
                 moving = (not stale and base_thumb is not None and not job.done()
                           and screen.changed(base_thumb, await asyncio.to_thread(screen.thumb)))
@@ -466,7 +470,13 @@ class Agent:
             if stale:
                 await self.log(f"↻ re-planning ({stale})")
                 continue
-            action = job.result()
+            try:
+                action = job.result()
+            except Exception as e:  # noqa: BLE001 - Holo timeout or API error: try again, say so
+                await self.log(f"Holo error ({type(e).__name__}), retrying")
+                await self.panel("H is slow right now, retrying…", "thinking")
+                await asyncio.sleep(0.5)
+                continue
             pl.accept(action)
             name, args = action["name"], action["args"]
             t_plan = action["timings"]["plan"]
