@@ -101,6 +101,11 @@ The person may skip ahead, go back, or do things their own way. Always judge whe
 CURRENT screenshot, never from what you asked before. If a later step is already reached, continue from
 there. If the person seems to do something unrelated, use 'wait'.
 
+Start from where the person already is. Each observation tells you the front window. Before acting, tick
+off every playbook step that the screen shows is already done. NEVER send them back to a site or app they
+are already on (no "open youtube.com" when YouTube is on screen), and never retype a URL or use a URL
+shortcut: teach the page's own navigation (menus, sidebar, buttons), e.g. YouTube sidebar Explore > Trending.
+
 When the person speaks, their words appear as a message. Obey them: if they say they are ahead, re-check
 the screen and continue; if they ask a question, use 'say'; if they ask you to wait, use 'wait'; if they
 change the goal, update the plan.
@@ -113,9 +118,10 @@ If the task needs another app (e.g. a website needs a browser), open or switch t
 Call 'answer' as soon as the task is done, with one short sentence."""
 
 
-def observation(img: Image.Image) -> dict:
+def observation(img: Image.Image, where: str = "") -> dict:
+    head = f"<observation>\nFront window: {where}\n" if where else "<observation>\n"
     return {"role": "user", "content": [
-        {"type": "text", "text": "<observation>\n"},
+        {"type": "text", "text": head},
         {"type": "image_url", "image_url": {"url": image_uri(img)}},
         {"type": "text", "text": "\n</observation>"},
     ]}
@@ -166,10 +172,10 @@ class Planner:
         """Add a text message from the person or the app (hint, mode change, speech)."""
         self.messages.append({"role": "user", "content": text})
 
-    def next(self, img: Image.Image) -> dict:
+    def next(self, img: Image.Image, where: str = "") -> dict:
         """Ask for the next action on `img` (screen-point sized). Returns an action dict."""
-        obs = observation(shrink(img))
-        msgs = [*self.messages, obs]
+        obs = observation(shrink(img), where)
+        msgs = [*self.lean(), obs]
         trim_to_last_n_images(msgs)
         t0 = time.perf_counter()
         resp = _create(msgs, TOOLS)
@@ -186,6 +192,17 @@ class Planner:
             args = {}
         return {"name": c.function.name, "args": args, "id": c.id, "obs": obs,
                 "content": msg.content, "raw_args": c.function.arguments, "timings": {"plan": dt}}
+
+    def lean(self, keep: int = 12) -> list:
+        """System + task + playbook, then only the recent turns: a growing history made each
+        step slower. Never start the tail on a tool result (it needs its tool call)."""
+        head = self.messages[:2]
+        playbook = [m for m in self.messages[2:] if m["role"] == "user"
+                    and isinstance(m["content"], str) and m["content"].startswith("Playbook")]
+        tail = self.messages[2:][-keep:]
+        while tail and tail[0]["role"] == "tool":
+            tail = tail[1:]
+        return head + [m for m in playbook if m not in tail] + tail
 
     def accept(self, action: dict) -> None:
         """Commit an action computed by next() to the history."""

@@ -2,6 +2,13 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 17:45** v3.1 fixes after the YouTube test (docs/fix-v3.1-plan.md, reviewed by Devin):
+  input only counts in the task's app(s) (typing elsewhere = quiet pause); re-plans don't use the
+  30-action budget; wait for a pause only after recent input; window title goes to Linkup and Holo
+  ("already on YouTube" → playbook ☰ > Explore > Charts, no URL shortcuts); lean Holo context;
+  "continue" resumes the unfinished task, vague "ok" asks back; GPT rewrites a session brief in
+  the background after each task (router + Holo read it); every new instruction is spoken; after
+  answering a question it keeps guiding. No fast/slow model split: 35B-A3B wasn't faster.
 - **Sat 16:45** OpenAI router live: model `gpt-5.4-mini` (auto-picked), 0.7-1.9 s per
   utterance, 6/6 test phrases routed right, including French ("fais le reste à ma place" → do)
   and rewriting the task on updates ("make it 12 euros" → "…at 12 €/month").

@@ -1,6 +1,6 @@
 # v3.1 fix plan: after the YouTube test
 
-Status: **approved Sat 17:10, in progress.** Reviewed by Devin (Ask mode). Fallback tag `v3-demo`.
+Status: **shipped Sat 17:45**, waiting for the team lead's live test. Reviewed by Devin (Ask mode). Fallback tag `v3-demo`.
 
 ## What went wrong (from the log)
 | # | Symptom | Cause |

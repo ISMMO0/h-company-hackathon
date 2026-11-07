@@ -15,7 +15,7 @@ from openai import OpenAI
 _client: OpenAI | None = None
 _model: str | None = None
 
-IDLE_INTENTS = ("answer", "guide", "do")
+IDLE_INTENTS = ("answer", "guide", "do", "resume", "unclear")
 BUSY_INTENTS = ("stop", "ahead", "wait", "question", "guide", "do", "update", "new_task")
 
 
@@ -59,6 +59,10 @@ ROUTE_PROMPT = """You route what a person says to Shadow Cursor, a voice assista
 helps them use apps on their Mac. Reply with JSON: {"intent": ..., "task": ..., "reply": ...}.
 
 If NO task is running, intent is one of:
+- "resume": they want to continue the unfinished task mentioned in the context ("ok continue",
+  "go on", "reprends", "on continue"). Only if there IS an unfinished task.
+- "unclear": too vague to act on and nothing to resume ("ok", "continue" with no unfinished task).
+  Put a short question back to them in "reply".
 - "answer": a pure information question that needs no app ("what's the best Italian restaurant near
   Opéra?", "who founded H Company?"). Put the question in "task".
 - "guide": they want to be shown how to do something on screen ("show me how…", "how do I…").
@@ -79,11 +83,18 @@ If a task IS running, intent is one of:
 "reply" is a very short spoken acknowledgement (max 6 words, same language as the person)."""
 
 
-def route(text: str, busy: bool, task: str = "", app: str = "") -> dict:
+def route(text: str, busy: bool, task: str = "", app: str = "", brief: str = "",
+          unfinished: str = "") -> dict:
     """{'intent', 'task', 'reply'}. Falls back to keywords without a key or on error."""
     if enabled():
         try:
-            ctx = f"Task running: {task!r} in {app}." if busy else f"No task running. Front app: {app}."
+            if busy:
+                ctx = f"Task running: {task!r} in {app}."
+            else:
+                ctx = f"No task running. Front app: {app}."
+                ctx += f" Unfinished task: {unfinished!r}." if unfinished else " No unfinished task."
+            if brief:
+                ctx += f"\nSession so far:\n{brief}"
             out = _ask(ROUTE_PROMPT, f"{ctx}\nThe person said: {text!r}")
             allowed = BUSY_INTENTS if busy else IDLE_INTENTS
             if out.get("intent") in allowed:
@@ -91,7 +102,7 @@ def route(text: str, busy: bool, task: str = "", app: str = "") -> dict:
                         "reply": out.get("reply") or ""}
         except Exception as e:  # noqa: BLE001 - fall back to keywords
             print(f"router: OpenAI failed, using keywords ({type(e).__name__})", flush=True)
-    return route_keywords(text, busy)
+    return route_keywords(text, busy, unfinished)
 
 
 DO_WORDS = ("do it", "do this", "do the rest", "for me", "fais-le", "fais le", "à ma place",
@@ -108,8 +119,16 @@ ACTION_VERBS = re.compile(r"\b(show|open|go to|click|create|add|book|send|buy|ma
                           r"montre|ouvre|va sur|crée|ajoute|réserve|envoie|mets|change)\b", re.IGNORECASE)
 
 
-def route_keywords(text: str, busy: bool) -> dict:
+RESUME_WORDS = ("continue", "go on", "keep going", "resume", "reprends", "reprend", "on continue",
+                "vas-y continue", "la suite")
+
+
+def route_keywords(text: str, busy: bool, unfinished: str = "") -> dict:
     t = text.lower().strip(" .!?,")
+    if not busy and len(t.split()) <= 4 and any(w in t for w in RESUME_WORDS):
+        if unfinished:
+            return {"intent": "resume", "task": unfinished, "reply": "Let's pick up where we left off."}
+        return {"intent": "unclear", "task": text, "reply": "Sure, what should we do?"}
     if busy:
         if t in STOP_PHRASES:
             return {"intent": "stop", "task": text, "reply": ""}
@@ -155,3 +174,21 @@ def merge_playbook(task: str, app: str, steps: list[dict], note: str = "") -> li
         return merged[:8] or steps
     except Exception:  # noqa: BLE001
         return steps
+
+
+# --- session brief ----------------------------------------------------------------------------
+
+BRIEF_PROMPT = """You keep the memory of a voice assistant that helps one person use apps on their Mac.
+From the session log, write a short brief (max 6 lines) that another model will read before each
+request: what the person is working on, which apps/sites, what was done and what is unfinished,
+their preferences (language, guide vs do). Plain facts, no advice. Reply with JSON {"brief": ...}."""
+
+
+def session_brief(log: str) -> str:
+    """GPT rewrite of the session log into a short brief ('' if unavailable)."""
+    if not enabled() or not log:
+        return ""
+    try:
+        return str(_ask(BRIEF_PROMPT, log).get("brief", ""))[:800]
+    except Exception:  # noqa: BLE001
+        return ""

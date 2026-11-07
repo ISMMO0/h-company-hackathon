@@ -34,7 +34,8 @@ except ImportError:  # memory.py lands with Devin's PR; keep the agent usable wi
         def finish_task(self, *_a): pass
         def context(self, *_a, **_k): return ""
 
-MAX_STEPS = 30
+MAX_ACTIONS = 30  # real actions shown/done; re-plans don't count
+MAX_TURNS = 200   # hard safety stop
 SAVE_FIXTURES = os.environ.get("SHADOW_SAVE_FIXTURES") == "1"
 FIXTURES = Path("data/fixtures")
 
@@ -57,6 +58,8 @@ class Agent:
         self.full = None
         self.current_task = ""
         self.current_app = ""
+        self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
+        self.brief = ""  # short session summary, rewritten by GPT in the background
         self.offer: str = ""  # task offered after an answer ("show it on screen")
 
     # --- small outputs --------------------------------------------------------------------
@@ -169,14 +172,22 @@ class Agent:
             await self.on_stop()
             return
         app = self.current_app if busy else screen.front_window()[0]
-        r = await asyncio.to_thread(router.route, text, busy, self.current_task, app)
+        unfinished, unfinished_mode = self.last_unfinished()
+        r = await asyncio.to_thread(router.route, text, busy, self.current_task, app,
+                                    self.brief or self.memory.context(), unfinished)
         intent, task = r["intent"], r["task"]
         await self.log(f"→ {intent}: {task}")
         if not busy:
             if intent == "answer":
                 await self.answer(task)
+            elif intent == "unclear" or (intent == "resume" and not unfinished):
+                self.speak(r.get("reply") or "What should we do?")
+                await self.panel(r.get("reply") or "What should we do?", "done")
+            elif intent == "resume" and unfinished:
+                self.speak(r.get("reply") or "Let's pick up where we left off.")
+                self.start(unfinished, unfinished_mode or self.default_mode, countdown=False)
             else:
-                self.start(task, intent, countdown=False)
+                self.start(task, "do" if intent == "do" else "guide", countdown=False)
             return
         await self.chat("you", text)
         if r.get("reply"):
@@ -199,6 +210,27 @@ class Agent:
         else:  # update
             self.current_task = task
             self.push("said", f"{text} (the task is now: {task})")
+
+    def last_unfinished(self) -> tuple[str, str]:
+        """(request, mode) of the task that was stopped before finishing, if any."""
+        cur = getattr(self.memory, "current", None)
+        if isinstance(cur, dict) and cur.get("request") and cur.get("mode") != "answer":
+            return cur["request"], cur.get("mode", "")
+        for t in reversed(getattr(self.memory, "tasks", []) or []):
+            if t.get("result") == "(not finished)" and t.get("mode") != "answer":
+                return t.get("request", ""), t.get("mode", "")
+            break
+        return "", ""
+
+    def refresh_brief(self) -> None:
+        """Rewrite the session brief with GPT in the background (never blocks a task)."""
+        log = self.memory.context(max_tasks=8, max_chat=12)
+        async def job() -> None:
+            brief = await asyncio.to_thread(router.session_brief, log)
+            if brief:
+                self.brief = brief
+                await self.log(f"🧠 Session brief updated:\n{brief}")
+        asyncio.create_task(job())
 
     async def answer(self, question: str) -> None:
         """Pure information: answer it, with sources, and offer to show it on screen."""
@@ -266,8 +298,10 @@ class Agent:
             for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
-            app, _ = screen.front_window()
+            app, title = screen.front_window()
             self.current_task, self.current_app = task, app
+            self.task_apps = {app}
+            self.current_title = title
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
             self.memory.start_task(task, mode)
             await self.chat("you", task)
@@ -281,18 +315,21 @@ class Agent:
         finally:
             await self.to_overlay({"type": "clear"})
             await self.to_ui({"type": "status", "text": "Idle"})
+            self.refresh_brief()
 
     async def _loop(self, task: str, mode: str, app: str) -> None:
-        pl = planner.Planner(task, mode, self.memory.context())
+        pl = planner.Planner(task, mode, self.brief or self.memory.context())
         roadmap = await self.research(pl, task, app)
         w, h = screen.screen_size()
         last_key, repeats, pixels_ok = None, 0, True
         last_step = 0
+        actions = 0
 
-        for i in range(MAX_STEPS):
-            if self.stopped:
-                return
+        for _turn in range(MAX_TURNS):
+            if self.stopped or actions >= MAX_ACTIONS:
+                break
             self._drain(pl)
+            await self.quiet()
 
             t0 = time.perf_counter()
             full = await self.snapshot()
@@ -300,12 +337,13 @@ class Agent:
             t_cap = time.perf_counter() - t0
             if SAVE_FIXTURES:
                 save_fixture(full, task, app)
+            app_now, title_now = screen.front_window()
             mark = input_mark()
-            job = asyncio.create_task(asyncio.to_thread(pl.next, small))
+            job = asyncio.create_task(asyncio.to_thread(pl.next, small, f"{app_now}: {title_now}"))
             stale = None
             while not job.done():
                 await asyncio.sleep(0.12)
-                stale = self.events and "spoke" or changed_since(mark)
+                stale = self.events and "spoke" or changed_since(mark, self.task_apps)
                 if stale or self.stopped:
                     break
             if self.stopped:
@@ -345,6 +383,7 @@ class Agent:
             if not repeat:
                 pixels_ok = True
 
+            actions += 1
             t1 = time.perf_counter()
             if repeats >= 2 and name not in ("wait",):
                 result = await self.stuck(pl, args)
@@ -354,12 +393,13 @@ class Agent:
                 if why == "pixels" and repeat:
                     pixels_ok = False  # something animates on screen: only react to real input
             t_point = getattr(self, "_t_point", 0.0)
-            await self.log(f"Step {i + 1}: {name} {short_args(args)}  "
+            await self.log(f"Step {actions}: {name} {short_args(args)}  "
                            f"[capture {t_cap:.1f}s · plan {t_plan:.1f}s · point {t_point:.1f}s"
                            f" · then {time.perf_counter() - t1:.1f}s on the person]")
             pl.result(action, result)
 
-        await self.log("Step budget reached.")
+        if not self.stopped:
+            await self.log("Step budget reached.")
 
     async def act(self, pl, name, args, full, w, h, repeat, pixels_ok) -> tuple[str, str]:
         """Show the step, then do it (DO) or watch the person (GUIDE). Returns (tool result, why)."""
@@ -371,9 +411,9 @@ class Agent:
             text = args.get("text", "")
             await self.panel(text, "waiting")
             await self.chat("shadow", text)
-            self.speak(text)
-            why = await self.watch(pixels_ok)
-            return f"Said it. {result_text(why)}", why
+            self.speak(text, whole=len(text) < 160)
+            await asyncio.sleep(min(4.0, 0.9 + len(text) / 18))  # let it be heard, then keep guiding
+            return "Said it. Now continue guiding from the current screen.", "said"
 
         if name == "wait":
             reason = args.get("reason", "Waiting")
@@ -390,8 +430,11 @@ class Agent:
                                              (args.get("x", 500), args.get("y", 500)))
             self._t_point = time.perf_counter() - t
             point = (nx / 1000 * w, ny / 1000 * h)
-            if self.mode == "do" and screen.window_owner_at(*point) in screen.SYSTEM_APPS:
-                return await self.blocked(screen.window_owner_at(*point)), "next"
+            owner = screen.window_owner_at(*point)
+            if self.mode == "do" and owner in screen.SYSTEM_APPS:
+                return await self.blocked(owner), "next"
+            if owner and owner not in screen.SYSTEM_APPS:
+                self.task_apps.add(owner)  # the task continues in that app
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
         await self.preview(full.resize((w, h)), point, label)
         if not repeat:
@@ -399,7 +442,7 @@ class Agent:
             if self.mode == "do":
                 self.speak(narrate(name, args, why), whole=True)
             else:
-                self.speak(label)
+                self.speak(short(label, 70), whole=True)
 
         if self.mode == "do":
             await self.panel(label, "acting", why)
@@ -424,7 +467,8 @@ class Agent:
         LLM if available, seeded as Holo's plan. Falls back to Holo alone."""
         t = time.perf_counter()
         try:
-            pb = await asyncio.wait_for(asyncio.to_thread(linkup.playbook, task, app), 5.0)
+            pb = await asyncio.wait_for(asyncio.to_thread(
+                linkup.playbook, task, app, getattr(self, "current_title", "")), 6.0)
         except TimeoutError:
             pb = {}
         steps = pb.get("steps", [])
@@ -472,21 +516,33 @@ class Agent:
         start = time.time()
         base = await asyncio.to_thread(screen.thumb)
         win0 = screen.front_window()
+        away_since = None
         while not self.stopped:
             if self.events:
                 kind = self.events[0][0]
                 if kind == "next":
                     self.events.pop(0)
                 return {"said": "spoke"}.get(kind, kind)
+            front = screen.front_window()
+            if front[0] not in self.task_apps:
+                # Doing something else (another app): stay quiet. If they stay and keep working
+                # there for a while, let the model decide whether the task moved to that app.
+                away_since = away_since or time.time()
+                if time.time() - away_since > 6:
+                    self.task_apps.add(front[0])
+                    return "window"
+                await asyncio.sleep(0.3)
+                continue
+            away_since = None
             click_ago, key_ago = screen.seconds_since_input()
             now = time.time()
             if now - click_ago > start:
                 await self.settle(base, quiet_keys=0.4)
                 return "click"
             if now - key_ago > start:
-                await self.settle(base, quiet_keys=0.9)
+                await self.settle(base, quiet_keys=1.0)  # typing is progress: wait for the pause
                 return "key"
-            if screen.front_window() != win0:
+            if front != win0:
                 await asyncio.sleep(0.5)
                 return "window"
             if pixels_ok:
@@ -500,6 +556,16 @@ class Agent:
                 pass
             self.poke.clear()
         return "stopped"
+
+    async def quiet(self, cap: float = 3.0) -> None:
+        """Before a screenshot: if the person is mid-action in the task's app (just typed or
+        clicked), wait for the pause. No delay at all when nothing happened recently."""
+        end = time.time() + cap
+        while time.time() < end and not self.stopped:
+            click_ago, key_ago = screen.seconds_since_input()
+            if (key_ago > 0.7 and click_ago > 0.4) or screen.front_window()[0] not in self.task_apps:
+                return
+            await asyncio.sleep(0.15)
 
     async def settle(self, base, quiet_keys: float = 0.0, cap: float = 2.5) -> None:
         """Wait until typing pauses and the screen stops changing (max `cap` seconds)."""
@@ -533,9 +599,12 @@ def input_mark() -> tuple[float, tuple[str, str]]:
     return time.time(), screen.front_window()
 
 
-def changed_since(mark) -> str | None:
-    """Did the person do something since `mark`? (click, key, or window switch)."""
+def changed_since(mark, task_apps: set[str]) -> str | None:
+    """Did the person do something in the task's app(s) since `mark`? Input in other apps
+    (e.g. typing a message elsewhere) doesn't count."""
     t, win = mark
+    if screen.front_window()[0] not in task_apps:
+        return None
     click_ago, key_ago = screen.seconds_since_input()
     now = time.time()
     if now - click_ago > t:

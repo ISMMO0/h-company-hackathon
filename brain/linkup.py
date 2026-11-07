@@ -34,13 +34,16 @@ def _post(body: dict, timeout: float) -> dict:
     return r.json()
 
 
-def playbook(task: str, app: str, timeout: float = 6) -> dict:
-    """{'steps': [{action_hint, target, why}], 'note': str}, or {} on failure."""
+def playbook(task: str, app: str, where: str = "", timeout: float = 6) -> dict:
+    """{'steps': [{action_hint, target, why}], 'note': str}, or {} on failure.
+    `where` is the front window title, so the steps start from the page the user is on."""
+    here = f"The user is already on '{where}' in {app}: start from there, skip opening it. " if where \
+        else f"The user currently has {app} open; only use {app} if the task is about it. "
     try:
         data = _post({
-            "q": f"On a Mac, the exact UI path to: {task}. The user currently has {app} open; "
-                 f"only use {app} if the task is about it, otherwise name the right app or website. "
-                 "Give 3 to 8 concrete steps with the exact menu, button or field names.",
+            "q": f"On a Mac, the exact UI path to: {task}. {here}"
+                 "Use the app's or website's own navigation (menus, sidebar, buttons), not URL "
+                 "shortcuts. Give 3 to 8 concrete steps with the exact menu, button or field names.",
             "depth": "fast", "outputType": "structured",
             "structuredOutputSchema": json.dumps(PLAYBOOK_SCHEMA),
         }, timeout)
