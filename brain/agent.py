@@ -187,7 +187,7 @@ class Agent:
         try:
             target = f"the on-screen UI element the person needs for this request: {text}"
             p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
-            if p and self.listener:  # still talking: show the guess, never click
+            if p and self.listener and not self.busy():  # still talking, no real step yet: show only
                 w, h = screen.screen_size()
                 await self.to_overlay({"type": "cursor", "x": p[0] / 1000 * w, "y": p[1] / 1000 * h,
                                        "label": "Looking…", "tentative": True})
@@ -245,7 +245,8 @@ class Agent:
         unfinished, unfinished_mode = self.last_unfinished()
         if not busy:
             quick = router.route_keywords(text, False, unfinished)
-            if quick["intent"] in ("guide", "do"):
+            confident = any(w in text.lower() for w in (*router.GUIDE_WORDS, *router.DO_WORDS))
+            if quick["intent"] in ("guide", "do") and confident:
                 # Start now on keywords; GPT confirms in the background and corrects if needed.
                 await self.log(f"→ {quick['intent']} (fast): {text}")
                 self.start(text, quick["intent"], countdown=False)
@@ -669,7 +670,7 @@ class Agent:
             if pixels_ok:
                 cur = await asyncio.to_thread(screen.thumb)
                 if screen.changed(base, cur):
-                    await self.settle(cur, cap=0.8)
+                    await self.settle(cur)  # page loads: wait for them (Devin: early plans there gain ~0)
                     return "pixels"
             try:
                 await asyncio.wait_for(self.poke.wait(), 0.25)

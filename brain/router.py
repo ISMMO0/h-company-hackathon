@@ -133,6 +133,9 @@ def route_keywords(text: str, busy: bool, unfinished: str = "") -> dict:
     t = text.lower().strip(" .!?,")
     if busy and (not t or FILLERS.match(t)):
         return {"intent": "ignore", "task": text, "reply": ""}
+    known = (*DO_WORDS, *GUIDE_WORDS, *AHEAD_WORDS, *WAIT_WORDS, "stop", "arrête", "annule")
+    if busy and len(t.split()) <= 2 and not any(w in t for w in known) and not t.endswith("?"):
+        return {"intent": "ignore", "task": text, "reply": ""}
     if not busy and len(t.split()) <= 4 and any(w in t for w in RESUME_WORDS):
         if unfinished:
             return {"intent": "resume", "task": unfinished, "reply": "Let's pick up where we left off."}

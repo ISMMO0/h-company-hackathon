@@ -87,7 +87,10 @@ class Listener:
 
     async def _send(self, frames: asyncio.Queue) -> None:
         while True:
-            await self._ws.send_bytes(await frames.get())
+            chunk = await frames.get()
+            # While Shadow speaks, Gladia gets silence: our own voice is never transcribed, and
+            # nothing the person said before or after is dropped.
+            await self._ws.send_bytes(bytes(len(chunk)) if self.muted() else chunk)
 
     async def _read(self) -> None:
         loop = asyncio.get_running_loop()
@@ -101,9 +104,6 @@ class Listener:
                     if self.on_speech and not self.muted():
                         self.on_speech()
                 if data.get("type") != "transcript":
-                    continue
-                if self.muted():  # our own voice coming back through the speakers
-                    self.partial = ""
                     continue
                 text = (data["data"].get("utterance") or {}).get("text", "").strip()
                 if data["data"].get("is_final"):
