@@ -95,3 +95,12 @@ Newest first. One line per decision, with the reason.
 - **Sat 12:10** Idea chosen: **Shadow Cursor** (see PLAN.md). Partners: H (core), Gladia (voice),
   Linkup (how-to lookup), Stripe (Pro paywall + Stripe Dashboard demo), Devin (builds).
 - **Sat 11:50** Rule from kickoff: use at least 4 of the 5 partner technologies.
+
+## Sat 22:15: Do it = a lesson, not a race
+Team lead: in Do it, the goal is to show and explain while doing, not to finish as fast as possible.
+- The first time it does something (header, first row, first formula, menu path) it goes in small
+  visible steps, one idea per action, and the spoken 'why' teaches the idea.
+- Once the person has seen the pattern, it repeats faster (remaining rows in one action, fill down).
+  Fast from the start only if asked, or if memory shows the person already did this kind of task.
+- Each sentence finishes before the next action is narrated (no more cut-off narration).
+- Spoken typing reads "Pizza, 10, =E2*B2" instead of Tab/Return characters.

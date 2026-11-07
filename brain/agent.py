@@ -870,10 +870,16 @@ def narrate(name: str, args: dict, why: str) -> str:
             "right_click": f"Right-clicking {short(args.get('element', ''), 50)}",
             "double_click": f"Double-clicking {short(args.get('element', ''), 50)}",
             "drag": f"Dragging {short(args.get('element', ''), 30)} onto {short(args.get('to_element', ''), 30)}",
-            "type": f"Typing {args.get('text', '')}",
+            "type": f"Typing {spoken_text(args.get('text', ''))}",
             "press": f"Pressing {args.get('keys', '')}",
             "scroll": "Scrolling"}.get(name, name)
     return f"{what}, {why}" if why else what
+
+
+def spoken_text(text: str) -> str:
+    """Typed text as it should be read aloud: no Tab/Return characters, short."""
+    text = text.replace("\t", ", ").replace("\n", ". ").strip(" .,")
+    return short(text, 60)
 
 
 def label_of(name: str, args: dict) -> str:

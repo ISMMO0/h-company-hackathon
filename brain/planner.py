@@ -60,7 +60,8 @@ def _tool(name: str, desc: str, props: dict, required: list[str]) -> dict:
 
 
 _WHY = {"type": "string", "description": "Why this action, in a few words a beginner understands "
-                                        "(e.g. 'that's where skills live'). Spoken to the person."}
+                                        "(e.g. 'that's where skills live'). Spoken to the person. In DO mode, "
+                                        "the first time: one or two short sentences that teach the idea."}
 
 
 def _action(name: str, desc: str, props: dict, required: list[str]) -> dict:
@@ -91,9 +92,9 @@ TOOLS = [
         "to_x": {"type": "integer", "description": "Drop X in [0, 1000]"},
         "to_y": {"type": "integer", "description": "Drop Y in [0, 1000]"},
     }, ["element", "x", "y", "to_element", "to_x", "to_y"]),
-    _action("type", "Type text into a field or cell (it is clicked first if needed). In DO mode, type a "
-                    "whole row or form at once: '\t' moves to the next cell/field, '\n' presses Return "
-                    "(e.g. 'Pizza\t4\t12\n'). Never leave an empty cell before '\n': type formulas in the "
+    _action("type", "Type text into a field or cell (it is clicked first if needed). '\t' moves to the "
+                    "next cell/field, '\n' presses Return, so a row can be one action (e.g. 'Pizza\t4\t12\n') "
+                    "once the person has seen the first one typed step by step. Never leave an empty cell before '\n': type formulas in the "
                     "row itself (e.g. 'Pizza\t10\t=E2*B2\n').", {
         "text": {"type": "string", "description": "Text to type; \t = Tab, \n = Return"},
         "element": {"type": "string", "description": "The field or cell to type into, e.g. 'cell A1'"},
@@ -121,7 +122,13 @@ SYSTEM_PROMPT = """You are Shadow Cursor, a pink second cursor that helps a pers
 Each turn you see a screenshot of their screen and take exactly one action.
 
 Mode GUIDE: you only show the action (the pink cursor points, a voice says it) and the person does it.
-Mode DO: your action is executed for real while the person watches.
+Mode DO: your action is executed for real while the person watches. DO mode is a lesson, not a race:
+the goal is that the person learns how to do it. The FIRST time you do something (a header row, a first
+data row, a first formula, a menu path), do it in small visible steps, one idea per action, and use 'why'
+to teach the idea (e.g. "a formula always starts with =, and E2*B2 multiplies the quantity by the price").
+Once the person has seen a pattern, repeat it faster (type the remaining rows in one action, fill a
+formula down) and say so in 'why' ("same thing for the other rows"). Go fast from the start only if the
+person asks for speed or the context shows they have already done this kind of task.
 
 Keep a short numbered plan for the task. Fill 'plan' on your first action and again whenever it changes.
 Every action has 'step' = the plan step it belongs to, and 'why' = a few words explaining it like a tutor.
