@@ -116,3 +116,17 @@ Overlay tech (Electron vs Swift vs PyObjC) is decided by Devin's research
 
 - Does Devin count toward "4 of 5 partners"? Ask the organizers / Discord.
 - Submission needs "H Showcase Platform" entry: find where.
+
+## 9. Final stretch (team lead, Sat night): keep in mind, not started
+1. **Landing page**: one simple page, "Click here to activate your Shadow Cursor", nothing more.
+   Hosted on **Vercel**. Note: Vercel can only host the page (and the Stripe checkout / download
+   link); the product itself (Python brain + Electron overlay) runs on the Mac, so the live demo is local.
+2. **Deploy**: landing page on Vercel = the "demo URL" for BuilderBase.
+3. To settle before moving on:
+   - The 4-of-5 partner rule: Gladia, Linkup, Devin, Stripe; confirm with the organizers that Devin
+     counts and that Stripe in the product is enough.
+   - The demo script: 1 Guide + 1 Do it scenario, rehearsed, plus a recorded backup video
+     (Holo API latency varies a lot).
+   - Submission content (BuilderBase: name, GitHub repo, H showcase entry, demo URL) before 14:00 Sunday.
+   - Demo Mac ready: permissions granted, caches warmed (app cheat sheets, voice), hotspot backup.
+   - Feature freeze Sunday 11:00.
