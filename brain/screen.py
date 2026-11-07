@@ -170,7 +170,11 @@ def drag(x0: float, y0: float, x1: float, y1: float, steps: int = 20) -> None:
 
 
 def type_text(text: str) -> None:
-    """Types text; '\t' presses Tab and '\n' presses Return, so a whole table row is one action."""
+    """Types text; '\t' presses Tab and '\n' presses Return, so a whole table row is one action.
+    A Tab right before a Return is dropped: in a spreadsheet, Return on an empty cell opens it
+    instead of going to the next row, which pushed the next rows onto the same line."""
+    while "\t\n" in text:
+        text = text.replace("\t\n", "\n")
     for ch in text:
         if ch in "\t\n":
             press("tab" if ch == "\t" else "enter")

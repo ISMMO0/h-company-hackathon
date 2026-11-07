@@ -496,6 +496,7 @@ class Agent:
             app_now, title_now = screen.front_window()
             mark = input_mark()
             job = asyncio.create_task(asyncio.to_thread(pl.next, small, f"{app_now}: {title_now}"))
+            job.add_done_callback(lambda t: t.cancelled() or t.exception())  # dropped stale plans: no log noise
             base_thumb = await asyncio.to_thread(screen.thumb) if pixel_stales < 1 else None
             stale = None
             waited, told = time.perf_counter(), False

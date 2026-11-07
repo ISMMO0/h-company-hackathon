@@ -13,7 +13,7 @@ import json
 import os
 import time
 
-from openai import OpenAI
+from openai import APITimeoutError, OpenAI
 from PIL import Image
 
 MODEL = os.environ.get("HOLO_MODEL", "holo4-27b")
@@ -93,7 +93,8 @@ TOOLS = [
     }, ["element", "x", "y", "to_element", "to_x", "to_y"]),
     _action("type", "Type text into a field or cell (it is clicked first if needed). In DO mode, type a "
                     "whole row or form at once: '\t' moves to the next cell/field, '\n' presses Return "
-                    "(e.g. 'Pizza\t4\t12\n').", {
+                    "(e.g. 'Pizza\t4\t12\n'). Never leave an empty cell before '\n': type formulas in the "
+                    "row itself (e.g. 'Pizza\t10\t=E2*B2\n').", {
         "text": {"type": "string", "description": "Text to type; \t = Tab, \n = Return"},
         "element": {"type": "string", "description": "The field or cell to type into, e.g. 'cell A1'"},
         "x": {"type": "integer", "description": "X in [0, 1000] of that field"},
@@ -183,6 +184,7 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
                 chunk.pop("image_url", None)
 
 
+POINT_TIMEOUT = 5.0
 HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "3.0"))
 _pool = cf.ThreadPoolExecutor(max_workers=4)
 
@@ -301,6 +303,10 @@ POINT_SCHEMA = {
 }
 
 
+class SlowPoint(Exception):
+    """The pointing call timed out: use the planner's rough point instead of waiting again."""
+
+
 def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
     prompt = (
         "Localize an element on the GUI image according to the provided target "
@@ -309,7 +315,7 @@ def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
         f" Your target is:\n{element}"
     )
     try:
-        resp = client().chat.completions.create(
+        resp = client().with_options(timeout=POINT_TIMEOUT).chat.completions.create(
             model=POINT_MODEL,
             messages=[{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": image_uri(img, 85)}},
@@ -321,6 +327,8 @@ def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
         )
         p = json.loads(resp.choices[0].message.content)
         return int(p["x"]), int(p["y"])
+    except APITimeoutError as e:
+        raise SlowPoint from e
     except Exception:  # noqa: BLE001 - caller falls back
         return None
 
@@ -335,11 +343,17 @@ def point(full: Image.Image, element: str, rough: tuple[int, int] | None) -> tup
         cx, cy = rough[0] / 1000 * full.width, rough[1] / 1000 * full.height
         x0 = int(min(max(cx - cw / 2, 0), full.width - cw))
         y0 = int(min(max(cy - ch / 2, 0), full.height - ch))
-        p = _localize(full.crop((x0, y0, x0 + cw, y0 + ch)), element)
+        try:
+            p = _localize(full.crop((x0, y0, x0 + cw, y0 + ch)), element)
+        except SlowPoint:
+            return rough  # Holo is slow: the planner's point beats another 5 s wait
         if p and 30 < p[0] < 970 and 30 < p[1] < 970:
             return (round((x0 + p[0] / 1000 * cw) / full.width * 1000),
                     round((y0 + p[1] / 1000 * ch) / full.height * 1000))
-    p = _localize(shrink(full, 1920), element)
+    try:
+        p = _localize(shrink(full, 1920), element)
+    except SlowPoint:
+        p = None
     return p if p else (rough or (500, 500))
 
 
