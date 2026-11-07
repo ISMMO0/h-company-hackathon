@@ -2,6 +2,10 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 12:50** Voice is live: **⌃⌥Space** (Control+Option+Space) → "Listening…" pill → Gladia
+  (FR/EN) → task starts in the current app, no countdown. Press again to stop. Saying "do it /
+  fais-le / à ma place" picks DO, "show me / montre-moi" picks GUIDE, otherwise the page toggle.
+  ⌥Space was dropped: it collides with the ChatGPT launcher. Gladia `speech_threshold` 0.3.
 - **Sat 12:40** First localhost demo works end to end (`./start.sh`): control page →
   Linkup hint → Holo loop → pink cursor (GUIDE) or real clicks/typing (DO). Tested in TextEdit.
 - **Sat 12:40** Holo defaults: `holo4-27b`, thinking on (~1-1.5 s/step, plans correctly).

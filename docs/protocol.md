@@ -23,7 +23,7 @@ primary display. The brain does all pixel ↔ point conversion.
 |---|---|
 | `{"type":"hello"}` | Sent on connect. |
 | `{"type":"hidden"}` | Ack for `hide`. |
-| `{"type":"hotkey"}` | The user pressed the global hotkey (`Alt+Space`). The brain starts listening. |
+| `{"type":"hotkey"}` | The user pressed the global hotkey (`Control+Alt+Space`). The brain starts listening. |
 
 The overlay reconnects every 1 s if the brain is not running. Without the overlay the
 brain still works and shows the pink marker on the screenshot in the control page.

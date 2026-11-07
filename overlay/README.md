@@ -12,7 +12,7 @@ npm install
 npm start
 ```
 
-The overlay has no Dock icon and never takes focus. `Alt+Space` (global hotkey) sends `{"type":"hotkey"}` to the brain. It reconnects every second while the brain is
+The overlay has no Dock icon and never takes focus. `Control+Alt+Space` (global hotkey) sends `{"type":"hotkey"}` to the brain. It reconnects every second while the brain is
 down. Quit with `Ctrl+C` in the terminal.
 
 ## Test without the brain

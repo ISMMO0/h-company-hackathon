@@ -36,7 +36,7 @@
 <main>
   <h1><span class="dot"></span>Shadow Cursor</h1>
   <form id="f">
-    <input id="task" placeholder="What do you want to do?" autocomplete="off" autofocus>
+    <input id="task" placeholder="What do you want to do? (or press ⌃⌥Space and say it)" autocomplete="off" autofocus>
     <button>Go</button>
   </form>
   <div class="row">
@@ -55,6 +55,7 @@
   document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => {
     mode = b.dataset.m;
     document.querySelectorAll(".seg button").forEach((x) => x.classList.toggle("on", x === b));
+    ws.send(JSON.stringify({ type: "mode", mode }));
   });
   function connect() {
     ws = new WebSocket(`ws://${location.host}/ws/ui`);
@@ -68,6 +69,8 @@
       } else if (m.type === "log") {
         $("log").textContent += m.text + "\n";
         $("log").scrollTop = 1e9;
+      } else if (m.type === "heard") {
+        $("task").value = m.text; $("log").textContent = "";
       } else if (m.type === "preview") {
         $("shot").src = m.image; $("shot").style.display = "block"; $("label").textContent = m.label;
       }

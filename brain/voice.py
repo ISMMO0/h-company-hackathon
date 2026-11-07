@@ -23,6 +23,8 @@ SESSION_CONFIG = {
     "endpointing": 0.3,
     "maximum_duration_without_endpointing": 15,
     "messages_config": {"receive_partial_transcripts": True},
+    # Default threshold missed quieter speech in testing; raise it if a noisy room triggers it.
+    "pre_processing": {"speech_threshold": 0.3},
 }
 
 

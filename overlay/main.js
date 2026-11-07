@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 
 const BRAIN_URL = 'ws://127.0.0.1:8765/ws/overlay';
 const RECONNECT_MS = 1000;
-const HOTKEY = 'Alt+Space';
+const HOTKEY = 'Control+Alt+Space';
 
 let windows = []; // one per display, same order as screen.getAllDisplays()
 let lastCursor = null; // { x, y, label } in global screen points

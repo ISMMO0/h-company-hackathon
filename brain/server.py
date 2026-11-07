@@ -18,7 +18,7 @@ from PIL import ImageDraw
 
 load_dotenv()
 
-from brain import holo, linkup, screen
+from brain import holo, linkup, screen, voice
 
 STATIC = Path(__file__).parent / "static"
 MAX_STEPS = 15
@@ -33,6 +33,8 @@ class Brain:
         self.task: asyncio.Task | None = None
         self.stopped = False
         self.say_proc: subprocess.Popen | None = None
+        self.listening = False
+        self.default_mode = "guide"  # follows the toggle on the control page
 
     # --- outputs -------------------------------------------------------------
     async def to_overlay(self, msg: dict) -> None:
@@ -85,11 +87,11 @@ class Brain:
                           "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()})
 
     # --- the loop ------------------------------------------------------------
-    async def run(self, task: str, mode: str) -> None:
+    async def run(self, task: str, mode: str, countdown: bool = True) -> None:
         self.stopped = False
         stop = lambda: self.stopped
         try:
-            for n in (3, 2, 1):
+            for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
             app = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
@@ -197,15 +199,57 @@ class Brain:
             await asyncio.sleep(0.1)
         return done
 
-    def start(self, task: str, mode: str) -> None:
+    def start(self, task: str, mode: str, countdown: bool = True) -> None:
         self.stop()
-        self.task = asyncio.create_task(self.run(task, mode))
+        self.task = asyncio.create_task(self.run(task, mode, countdown))
+
+    async def on_hotkey(self) -> None:
+        """⌃⌥Space: stop if busy, otherwise listen once and start in the current app."""
+        if self.listening:
+            return
+        if self.task and not self.task.done():
+            self.stop()
+            await self.to_overlay({"type": "clear"})
+            await self.log("■ Stopped")
+            self.speak("Stopped.")
+            return
+        self.listening = True
+        await self.to_overlay({"type": "listening", "on": True})
+        await self.to_ui({"type": "status", "text": "Listening…"})
+        try:
+            text = await voice.listen_once(
+                on_partial=lambda t: asyncio.create_task(self.to_ui({"type": "status", "text": f"… {t}"})))
+        except Exception as e:  # noqa: BLE001 - mic or network failure
+            await self.log(f"Voice error: {type(e).__name__}: {e}")
+            text = ""
+        finally:
+            self.listening = False
+            await self.to_overlay({"type": "listening", "on": False})
+        if not text:
+            await self.to_ui({"type": "status", "text": "Didn't catch that"})
+            return
+        await self.log(f'🎙 "{text}"')
+        await self.to_ui({"type": "heard", "text": text})
+        self.start(text, mode_from(text, self.default_mode), countdown=False)
 
     def stop(self) -> None:
         self.stopped = True
         self.next_step.set()
         if self.task and not self.task.done():
             self.task.cancel()
+
+
+DO_WORDS = ("do it", "do this", "for me", "fais-le", "fais le", "à ma place", "fais-moi", "fais moi")
+
+
+def mode_from(text: str, default: str) -> str:
+    """'…do it for me' / '…fais-le' switches to DO; 'show me' / 'montre-moi' to GUIDE."""
+    t = text.lower()
+    if any(w in t for w in DO_WORDS):
+        return "do"
+    if "show me" in t or "montre" in t or "guide" in t:
+        return "guide"
+    return default
 
 
 brain = Brain()
@@ -221,8 +265,13 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
     brain.overlays.add(ws)
     await brain.log("Overlay connected")
     async for msg in ws:
-        if msg.type == WSMsgType.TEXT and json.loads(msg.data).get("type") == "hidden":
+        if msg.type != WSMsgType.TEXT:
+            continue
+        kind = json.loads(msg.data).get("type")
+        if kind == "hidden":
             brain.hidden.set()
+        elif kind == "hotkey":
+            asyncio.create_task(brain.on_hotkey())
     brain.overlays.discard(ws)
     return ws
 
@@ -244,6 +293,8 @@ async def ui_ws(req: web.Request) -> web.WebSocketResponse:
             await brain.log("■ Stopped")
         elif data.get("type") == "next":
             brain.next_step.set()
+        elif data.get("type") == "mode":
+            brain.default_mode = data.get("mode", "guide")
     brain.uis.discard(ws)
     return ws
 
