@@ -25,6 +25,8 @@
   .seg button { background: transparent; color: var(--muted); border-radius: 0; padding: 6px 14px; }
   .seg button.on { background: var(--pink); color: #fff; }
   #status { color: var(--muted); font-size: 14px; }
+  #billing { margin-top: 20px; font-size: 13px; color: var(--muted); }
+  #billing button { padding: 4px 10px; font-size: 13px; }
   #next { display: none; }
   img { width: 100%; margin-top: 20px; border-radius: 10px; border: 1px solid var(--line); display: none; }
   #label { margin-top: 8px; font-size: 14px; }
@@ -45,6 +47,7 @@
     <button type="button" class="ghost" id="next">Next</button>
     <span id="status">Connecting…</span>
   </div>
+  <div class="row" id="billing"><span id="plan"></span><button type="button" class="ghost" id="upgrade">Upgrade</button></div>
   <img id="shot" alt="">
   <div id="label"></div>
   <pre id="log"></pre>
@@ -83,6 +86,18 @@
     ws.send(JSON.stringify({ type: "start", task: $("task").value, mode }));
   };
   $("stop").onclick = () => ws.send(JSON.stringify({ type: "stop" }));
+  async function plan() {
+    const b = await (await fetch("/billing")).json();
+    $("plan").textContent = b.pro ? "Pro" : `Free: ${b.tasks_left} tasks left today`;
+    $("upgrade").style.display = b.pro ? "none" : "inline-block";
+  }
+  plan();
+  window.onfocus = plan;
+  $("upgrade").onclick = async () => {
+    const tab = window.open("", "_blank");
+    const r = await (await fetch("/billing/checkout", { method: "POST" })).json();
+    if (r.url) tab.location = r.url; else { tab.close(); $("status").textContent = r.error; }
+  };
   $("next").onclick = () => ws.send(JSON.stringify({ type: "next" }));
 </script>
 </body>

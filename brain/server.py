@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
@@ -12,9 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from brain import billing
 from brain.agent import Agent
 
 STATIC = Path(__file__).parent / "static"
+BASE_URL = "http://127.0.0.1:8765"
 overlays: set[web.WebSocketResponse] = set()
 uis: set[web.WebSocketResponse] = set()
 
@@ -83,9 +86,37 @@ async def ui_ws(req: web.Request) -> web.WebSocketResponse:
     return ws
 
 
+async def billing_status(_req: web.Request) -> web.Response:
+    return web.json_response({"pro": billing.is_pro(), "tasks_left": billing.tasks_left()})
+
+
+async def billing_checkout(_req: web.Request) -> web.Response:
+    try:
+        url = await asyncio.to_thread(billing.create_checkout, BASE_URL)
+    except billing.ERRORS as e:
+        return web.json_response({"error": re.sub(r"sk_\w+", "sk_***", str(e))}, status=500)
+    return web.json_response({"url": url})
+
+
+async def billing_success(req: web.Request) -> web.Response:
+    session_id = req.query.get("session_id", "")
+    try:
+        ok = bool(session_id) and await asyncio.to_thread(billing.verify, session_id)
+    except billing.ERRORS:
+        ok = False
+    text = "Shadow Pro is active, you can close this tab" if ok else "Payment not confirmed yet"
+    html = ("<!doctype html><meta charset=utf-8><title>Shadow Pro</title>"
+            "<body style=\"margin:0;display:grid;place-items:center;height:100vh;"
+            "font:17px -apple-system,BlinkMacSystemFont,sans-serif\">"
+            f"<p><span style=\"color:#ff3ea5\">●</span> {text}</p>")
+    return web.Response(text=html, content_type="text/html")
+
+
 def main() -> None:
     app = web.Application()
-    app.add_routes([web.get("/", index), web.get("/ws/overlay", overlay_ws), web.get("/ws/ui", ui_ws)])
+    app.add_routes([web.get("/", index), web.get("/ws/overlay", overlay_ws), web.get("/ws/ui", ui_ws),
+                    web.get("/billing", billing_status), web.post("/billing/checkout", billing_checkout),
+                    web.get("/billing/success", billing_success)])
     web.run_app(app, host="127.0.0.1", port=8765, print=lambda *_: print("Shadow Cursor → http://127.0.0.1:8765"))
 
 
