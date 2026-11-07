@@ -746,11 +746,12 @@ class Agent:
             elif name == "drag" and drop:
                 await asyncio.to_thread(screen.drag, *point, *drop)
             elif name == "type":
-                near = point and self.last_at and abs(point[0] - self.last_at[0]) + abs(point[1] - self.last_at[1]) < 90
+                dist = (abs(point[0] - self.last_at[0]) + abs(point[1] - self.last_at[1])
+                        if point and self.last_at else 1e9)
                 if self.prev_action == "double_click":  # already editing: replace, don't insert at the caret
                     await asyncio.to_thread(screen.press, "cmd+a")
-                elif near and self.prev_action in ("click", "type", "press"):
-                    pass  # the field is already active: a click here would move the caret mid-text
+                elif (self.prev_action == "type" and dist < 90) or (self.prev_action == "click" and dist < 15):
+                    pass  # still typing in the same active field: a click would move the caret mid-text
                 elif point:  # focus the field first
                     await asyncio.to_thread(screen.click, *point)
                     await asyncio.sleep(0.2)
@@ -1030,7 +1031,7 @@ def short(label: str, n: int = 42) -> str:
     return first if len(first) <= n else first[: n - 1] + "…"
 
 
-OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp", "Electron"}
+OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Electron: that's our overlay
 
 
 def not_target(app: str, title: str) -> bool:
