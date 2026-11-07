@@ -15,6 +15,7 @@ primary display. The brain does all pixel ↔ point conversion.
 | `{"type":"hide"}` | Hide everything immediately (used right before a screenshot). Reply `{"type":"hidden"}` once the window is actually hidden (next frame). |
 | `{"type":"show"}` | Show the cursor again at its last position. |
 | `{"type":"clear"}` | Task finished or stopped: hide cursor and bubble. |
+| `{"type":"listening","on":true}` | Show a small pink pulsing dot with "Listening…" next to the user's real mouse position (read when the message arrives). `"on":false` hides it. |
 
 ## Overlay → brain
 
@@ -22,6 +23,7 @@ primary display. The brain does all pixel ↔ point conversion.
 |---|---|
 | `{"type":"hello"}` | Sent on connect. |
 | `{"type":"hidden"}` | Ack for `hide`. |
+| `{"type":"hotkey"}` | The user pressed the global hotkey (`Alt+Space`). The brain starts listening. |
 
 The overlay reconnects every 1 s if the brain is not running. Without the overlay the
 brain still works and shows the pink marker on the screenshot in the control page.
