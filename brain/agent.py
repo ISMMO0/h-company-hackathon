@@ -152,7 +152,7 @@ class Agent:
         self.hush()  # never transcribe our own voice
         lis = voice.Listener(
             on_text=lambda t: asyncio.create_task(self._live(t)),
-            on_auto_send=lambda: asyncio.create_task(self.on_hotkey()),
+            on_auto_send=lambda: asyncio.create_task(self._auto_send(lis)),
             on_speech=lambda: asyncio.create_task(self.to_overlay({"type": "pulse"})))
         self.listener = lis
         self._guess = {"busy": False, "words": 0, "shot": None}
@@ -165,6 +165,12 @@ class Agent:
             self.listener = None
             await self.to_overlay({"type": "listening", "on": False})
             await self.log(f"Voice error: {type(e).__name__}: {e}")
+
+    async def _auto_send(self, lis: voice.Listener) -> None:
+        """Silence-triggered send: only if this push-to-talk is still the active one (a manual
+        send may already have happened; toggling the task mic here closed it by mistake)."""
+        if self.listener is lis:
+            await self.on_hotkey()
 
     async def _live(self, text: str) -> None:
         await self.to_overlay({"type": "transcript", "text": text})
@@ -245,7 +251,12 @@ class Agent:
         unfinished, unfinished_mode = self.last_unfinished()
         if not busy:
             quick = router.route_keywords(text, False, unfinished)
-            confident = any(w in text.lower() for w in (*router.GUIDE_WORDS, *router.DO_WORDS))
+            low = text.lower()
+            has_guide = any(w in low for w in router.GUIDE_WORDS)
+            has_do = any(w in low for w in router.DO_WORDS)
+            # Fast start only when the intent is clear and the request short; long or mixed requests
+            # wait ~1 s for GPT to turn them into a clean task (names fixed, goals kept).
+            confident = (has_guide != has_do) and len(text.split()) <= 25
             if quick["intent"] in ("guide", "do") and confident:
                 # Start now on keywords; GPT confirms in the background and corrects if needed.
                 await self.log(f"→ {quick['intent']} (fast): {text}")

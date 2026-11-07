@@ -68,6 +68,10 @@ If NO task is running, intent is one of:
 - "guide": they want to be shown how to do something on screen ("show me how…", "how do I…").
 - "do": they want it done for them ("do it", "book…", "create…", "fais-le").
 For "guide"/"do", rewrite "task" as a short imperative ("Create a product called Shadow Pro at 12 €/month").
+Keep every concrete goal the person mentioned, in order, and fix names that speech recognition likely
+garbled (songs, artists, files, French words), e.g. "Genesio OG tea et psychologique par Chia Kola" →
+"Load 'OG' by Genezio and 'Psychologique' by Tiakola onto the two decks, then show how to match their BPM".
+Choose "guide" if they ask to be shown or to learn, even if they also say "for me".
 When in doubt between answer and guide/do, choose guide.
 
 If a task IS running, intent is one of:
