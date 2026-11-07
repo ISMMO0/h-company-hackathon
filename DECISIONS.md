@@ -2,6 +2,9 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 16:45** OpenAI router live: model `gpt-5.4-mini` (auto-picked), 0.7-1.9 s per
+  utterance, 6/6 test phrases routed right, including French ("fais le reste à ma place" → do)
+  and rewriting the task on updates ("make it 12 euros" → "…at 12 €/month").
 - **Sat 16:30** Backend v3 brain shipped (overlay v5 card pending from Devin). Measured: Linkup
   playbook 3.4-4.5 s (Codex: finds `$skill-creator`, the real path), sourced answer 3.6 s,
   plan p50 1.0 s + point 0.4 s per step. Router: keywords 10/10 on test phrases; OpenAI used
