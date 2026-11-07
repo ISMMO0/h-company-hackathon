@@ -193,6 +193,8 @@ KEYCODES = {
     **{c: k for c, k in zip("asdfhgzxcv", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])},
     "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 31, "u": 32,
     "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
+    "home": 115, "end": 119, "pageup": 116, "page_up": 116, "pagedown": 121, "page_down": 121,
+    "forwarddelete": 117, "del": 117, "arrowleft": 123, "arrowright": 124, "arrowdown": 125, "arrowup": 126,
 }
 MODIFIERS = {
     "cmd": Quartz.kCGEventFlagMaskCommand, "command": Quartz.kCGEventFlagMaskCommand,
@@ -210,8 +212,9 @@ def press(keys: str) -> None:
         flags |= MODIFIERS.get(p, 0)
     code = KEYCODES.get(parts[-1])
     if code is None:
-        type_text(parts[-1])
-        return
+        if len(parts[-1]) == 1:  # a plain character, e.g. 'cmd+/'
+            type_text(parts[-1])
+        return  # an unknown key name ('Home' typed as h-o-m-e garbled a document): do nothing
     for down in (True, False):
         ev = Quartz.CGEventCreateKeyboardEvent(None, code, down)
         Quartz.CGEventSetFlags(ev, flags)

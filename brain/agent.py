@@ -65,6 +65,7 @@ class Agent:
         self.shown: dict[str, int] = {}  # Do it: rows/formulas already typed step by step this task
         self.partial = False
         self.narrated = 0  # Do it narrations this task: the first ones teach in full
+        self.last_at = None
         self.task_lines: list[str] | None = None  # this task's log, for the lessons learned after it
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
@@ -470,6 +471,7 @@ class Agent:
             self.current_task, self.current_app = task, app
             self.task_lines = []
             self.shown, self.partial, self.prev_action, self.narrated = {}, False, "", 0
+            self.last_at = None  # where the last Do it action happened
             self.task_apps = {app}
             self.current_title = title
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
@@ -656,6 +658,10 @@ class Agent:
             return await self.blocked(screen.frontmost_app()), "next"
 
         if name == "type" and self.mode == "do":
+            if "address bar" in (args.get("element") or "").lower() or "url" in (args.get("element") or "").lower():
+                await self.log("⛔ not typing in the address bar (autocomplete can open any site)")
+                return ("Typing in the browser address bar is not allowed. Use the page's own fields and "
+                        "buttons; if you are stuck, use 'say' to ask the person."), "next"
             self.teach_first(args)
 
         if name == "say":
@@ -740,8 +746,11 @@ class Agent:
             elif name == "drag" and drop:
                 await asyncio.to_thread(screen.drag, *point, *drop)
             elif name == "type":
+                near = point and self.last_at and abs(point[0] - self.last_at[0]) + abs(point[1] - self.last_at[1]) < 90
                 if self.prev_action == "double_click":  # already editing: replace, don't insert at the caret
                     await asyncio.to_thread(screen.press, "cmd+a")
+                elif near and self.prev_action in ("click", "type", "press"):
+                    pass  # the field is already active: a click here would move the caret mid-text
                 elif point:  # focus the field first
                     await asyncio.to_thread(screen.click, *point)
                     await asyncio.sleep(0.2)
@@ -751,6 +760,7 @@ class Agent:
             elif name == "scroll":
                 await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
             self.prev_action = name
+            self.last_at = point or self.last_at
             await asyncio.sleep(0.4)  # let the app react
             if self.partial:
                 self.partial = False

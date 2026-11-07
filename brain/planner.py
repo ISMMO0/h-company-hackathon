@@ -159,8 +159,10 @@ Never ask to click something that is already selected or focused (e.g. a cell th
 border): go straight to the next action, e.g. 'type' into it.
 To change a spreadsheet cell's value, just 'type' into the cell: typing replaces its content. Do not
 double-click it first (that edits inside the old value, e.g. 5 + 10 gives 510).
-Never ask to click an empty area "to focus" something. Typing a URL is a last resort: only after the
-on-page navigation clearly failed, and say so with 'say' first.
+Never ask to click an empty area "to focus" something. Never type in the browser's address bar and never
+open new tabs: use the page's own fields and buttons. If you are stuck, use 'say' to ask the person.
+When text came out wrong in a field, select it all (cmd+a) and retype it, instead of clicking around in it.
+Keys for 'press': use names like home, end, delete, return, tab, escape, up, down, left, right, cmd+a.
 If something the plan expects isn't on screen after one look (or one scroll), it may have been removed or
 renamed: check the app cheat sheet and web notes, use 'say' to tell the person, and use the replacement.
 In 'element', describe the target precisely (label, position, neighbours).
