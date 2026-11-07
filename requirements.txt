@@ -7,3 +7,4 @@ pillow
 pyobjc-framework-Quartz
 sounddevice
 stripe==16.1.0
+pyobjc-framework-ApplicationServices

@@ -44,9 +44,11 @@ Reply with JSON {{"lessons": ["...", "..."]}}."""
 def site_of(app: str, title: str) -> str:
     """The real "app" behind a browser tab: 'Untitled spreadsheet - Google Sheets' → 'Google Sheets'."""
     if app.lower() in BROWSERS and title:
-        last = re.split(r" [-–—|] ", title)[-1].strip()
-        if 2 <= len(last) <= 40:
-            return last
+        parts = [p.strip() for p in re.split(r" [-–—|] ", title) if p.strip()]
+        while len(parts) > 1 and parts[-1].lower() in (app.lower(), "google chrome", "safari", "arc"):
+            parts.pop()  # 'Sheet - Google Sheets - Google Chrome': drop the browser's own name
+        if len(parts) > 1 and 2 <= len(parts[-1]) <= 40:
+            return parts[-1]
     return app
 
 

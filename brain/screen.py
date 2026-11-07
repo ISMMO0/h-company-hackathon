@@ -10,6 +10,7 @@ import time
 
 import Quartz
 from AppKit import NSScreen
+from ApplicationServices import AXUIElementCopyAttributeValue, AXUIElementCreateApplication
 from PIL import Image, ImageChops
 
 
@@ -99,8 +100,21 @@ def front_window() -> tuple[str, str]:
         name = w.get("kCGWindowOwnerName", "")
         if w.get("kCGWindowLayer", 0) == 0 and w.get("kCGWindowAlpha", 1) > 0 and \
                 name not in ("Electron", "Window Server", "Dock"):
-            return name, w.get("kCGWindowName", "") or ""
+            return name, w.get("kCGWindowName", "") or _ax_title(w.get("kCGWindowOwnerPID", 0))
     return "", ""
+
+
+def _ax_title(pid: int) -> str:
+    """Window titles of other apps are hidden from CGWindowList without Screen Recording rights
+    for this process; the Accessibility API (already granted for clicking) has them."""
+    try:
+        err, win = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), "AXFocusedWindow", None)
+        if err or win is None:
+            return ""
+        err, title = AXUIElementCopyAttributeValue(win, "AXTitle", None)
+        return str(title or "") if not err else ""
+    except Exception:  # noqa: BLE001 - a title is a hint, never a requirement
+        return ""
 
 
 def seconds_since_input() -> tuple[float, float]:
