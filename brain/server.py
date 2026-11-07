@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from brain import billing
+from brain import billing, history
 from brain.agent import Agent
 
 STATIC = Path(__file__).parent / "static"
@@ -42,6 +42,7 @@ async def overlay_ws(req: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(req)
     overlays.add(ws)
+    await ws.send_json({"type": "theme", "color": history.color()})
     await agent.log("Overlay connected")
     async for msg in ws:
         if msg.type != WSMsgType.TEXT:
@@ -112,11 +113,30 @@ async def billing_success(req: web.Request) -> web.Response:
     return web.Response(text=html, content_type="text/html")
 
 
+async def history_list(_req: web.Request) -> web.Response:
+    items = await asyncio.to_thread(history.items, agent.memory.tasks)
+    return web.json_response({"items": items})
+
+
+async def theme_get(_req: web.Request) -> web.Response:
+    return web.json_response({"color": history.color()})
+
+
+async def theme_set(req: web.Request) -> web.Response:
+    try:
+        color = history.set_color((await req.json()).get("color", ""))
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    await _send(overlays, {"type": "theme", "color": color})  # the pink cursor changes too
+    return web.json_response({"color": color})
+
+
 def main() -> None:
     app = web.Application()
     app.add_routes([web.get("/", index), web.get("/ws/overlay", overlay_ws), web.get("/ws/ui", ui_ws),
                     web.get("/billing", billing_status), web.post("/billing/checkout", billing_checkout),
-                    web.get("/billing/success", billing_success)])
+                    web.get("/billing/success", billing_success), web.get("/history", history_list),
+                    web.get("/theme", theme_get), web.post("/theme", theme_set)])
     web.run_app(app, host="127.0.0.1", port=8765, print=lambda *_: print("Shadow Cursor → http://127.0.0.1:8765"))
 
 

@@ -4,6 +4,7 @@ summaries, persisted to data/session.json after every write."""
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 MAX_TASKS = 50
@@ -68,7 +69,7 @@ class Memory:
             n += f", {skipped} skipped"
         summary = f"{task['request']} -> {result} ({n})"
         self.tasks.append({"request": task["request"], "mode": task["mode"],
-                           "result": result, "summary": summary})
+                           "result": result, "summary": summary, "at": time.time()})
         del self.tasks[:-MAX_TASKS]
         return summary
 

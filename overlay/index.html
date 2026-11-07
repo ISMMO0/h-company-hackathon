@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
+  :root { --accent: var(--accent); } /* the brain can change it: {"type":"theme","color":"#…"} */
   html, body {
     margin: 0;
     width: 100%;
@@ -55,7 +56,7 @@
     top: -16px;
     width: 32px;
     height: 32px;
-    border: 2px solid #ff3ea5;
+    border: 2px solid var(--accent);
     border-radius: 50%;
     opacity: 0;
     pointer-events: none;
@@ -133,7 +134,7 @@
   #stop, #answer-close { font-size: 15px; }
   /* Open mic during a task: live dot when on, muted (slashed) icon when off. */
   #mic .live, #mic .slash { display: none; }
-  #mic.on .live { display: block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: #ff3ea5; animation: pulse 1s ease-in-out infinite; }
+  #mic.on .live { display: block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
   #mic.off { color: rgba(255, 255, 255, 0.45); }
   #mic.off .slash { display: block; }
   #heard {
@@ -146,7 +147,7 @@
   #heard:empty { display: none; }
   #heard.fade { opacity: 0; }
   #card.collapsed #heard { display: none; }
-  #details-button.on { background: rgba(255, 62, 165, 0.35); }
+  #details-button.on { background: color-mix(in srgb, var(--accent) 35%, transparent); }
   #details {
     max-height: 320px;
     overflow-y: auto;
@@ -159,13 +160,13 @@
     color: rgba(255, 255, 255, 0.5);
     overflow-wrap: anywhere;
   }
-  #plan .step.current { border-left-color: #ff3ea5; color: #fff; }
+  #plan .step.current { border-left-color: var(--accent); color: #fff; }
   #plan .step.done::before { content: '✓ '; }
   #chat { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
   #chat:empty, #plan:empty + #chat { margin-top: 0; padding-top: 0; border-top: 0; }
   #chat .line { padding: 2px 0; overflow-wrap: anywhere; }
   #chat .who { color: rgba(255, 255, 255, 0.5); margin-right: 5px; }
-  #chat .shadow .who { color: #ff3ea5; }
+  #chat .shadow .who { color: var(--accent); }
   /* Listening mode: dot + hint, live text, Send / Cancel instead of the step and its buttons. */
   #listen { display: none; }
   #panel.listening #listen { display: block; }
@@ -207,7 +208,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #ff3ea5;
+    background: var(--accent);
     animation: pulse 1s ease-in-out infinite;
   }
   @keyframes pulse {
@@ -220,7 +221,7 @@
 <div id="cursor" class="hidden">
   <svg viewBox="0 0 24 24">
     <path d="M3 2 L3 19 L7.5 15 L10.5 21.5 L13.5 20.2 L10.5 13.8 L16.5 13.8 Z"
-          fill="#ff3ea5" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+          style="fill: var(--accent)" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
   </svg>
   <div id="ring"></div>
   <div id="label"></div>
@@ -432,6 +433,9 @@
 
   window.overlay.onMessage((msg) => {
     switch (msg.type) {
+      case 'theme':
+        document.documentElement.style.setProperty('--accent', msg.color);
+        break;
       case 'follow':
         cursor.style.transition = msg.glide ? '' : 'none';
         cursor.style.transform = `translate(${msg.x}px, ${msg.y}px)`;

@@ -236,6 +236,7 @@ function handleMessage(msg) {
     case 'answer':
       showAnswer(msg);
       break;
+    case 'theme': // cursor + panel accent color picked on the control page
     case 'pulse': // only the display showing the pink cursor draws anything
     case 'mic':
     case 'transcript':
