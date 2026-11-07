@@ -15,6 +15,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -60,6 +61,9 @@ class Agent:
         self.current_app = ""
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
+        self.open_mic: voice.Listener | None = None  # open mic for the running task
+        self._tts_seen = 0.0  # last time our own voice was playing (echo filter)
+        self._guess = {"busy": False, "words": 0, "shot": None}  # fast path on partial words
         self.offer: str = ""  # task offered after an answer ("show it on screen")
 
     # --- small outputs --------------------------------------------------------------------
@@ -87,6 +91,13 @@ class Agent:
     def hush(self) -> None:
         if self.say_proc and self.say_proc.poll() is None:
             self.say_proc.terminate()
+
+    def speaking(self) -> bool:
+        """True while our own voice plays, and 0.4 s after: what the mic hears then is us."""
+        if self.say_proc and self.say_proc.poll() is None:
+            self._tts_seen = time.time()
+            return True
+        return time.time() - self._tts_seen < 0.4
 
     async def snapshot(self):
         """Native-resolution screenshot without the pink cursor or panel in it."""
@@ -122,7 +133,13 @@ class Agent:
 
     # --- voice ----------------------------------------------------------------------------
     async def on_hotkey(self) -> None:
-        """⌃⌥Space: start listening, or send what was said."""
+        """⌃⌥Space: idle → push-to-talk (again = send). During a task → open mic on/off."""
+        if self.busy() and not self.listener:
+            if self.open_mic:
+                await self.close_open_mic()
+            else:
+                await self.start_open_mic()
+            return
         if self.listener:
             lis, self.listener = self.listener, None
             text = await lis.finish()
@@ -135,8 +152,11 @@ class Agent:
         self.hush()  # never transcribe our own voice
         lis = voice.Listener(
             on_text=lambda t: asyncio.create_task(self._live(t)),
-            on_auto_send=lambda: asyncio.create_task(self.on_hotkey()))
+            on_auto_send=lambda: asyncio.create_task(self.on_hotkey()),
+            on_speech=lambda: asyncio.create_task(self.to_overlay({"type": "pulse"})))
         self.listener = lis
+        self._guess = {"busy": False, "words": 0, "shot": None}
+        asyncio.create_task(self._grab_guess_shot())
         await self.to_overlay({"type": "listening", "on": True})
         await self.to_ui({"type": "status", "text": "Listening…"})
         try:
@@ -149,6 +169,56 @@ class Agent:
     async def _live(self, text: str) -> None:
         await self.to_overlay({"type": "transcript", "text": text})
         await self.to_ui({"type": "status", "text": f"… {text}"})
+        await self._maybe_guess(text)
+
+    # --- fast path: move the cursor while the person is still talking -----------------------
+    async def _grab_guess_shot(self) -> None:
+        """One screenshot when push-to-talk opens: the screen doesn't change while they talk."""
+        self._guess["shot"] = await asyncio.to_thread(screen.capture_full)
+
+    async def _maybe_guess(self, text: str) -> None:
+        g = self._guess
+        words = len(text.split())
+        if g["busy"] or g["shot"] is None or words < 3 or words - g["words"] < 2:
+            return
+        if not UI_REQUEST.search(text) or self.busy():
+            return
+        g["busy"], g["words"] = True, words
+        try:
+            target = f"the on-screen UI element the person needs for this request: {text}"
+            p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
+            if p and self.listener:  # still talking: show the guess, never click
+                w, h = screen.screen_size()
+                await self.to_overlay({"type": "cursor", "x": p[0] / 1000 * w, "y": p[1] / 1000 * h,
+                                       "label": "Looking…", "tentative": True})
+        finally:
+            g["busy"] = False
+
+    # --- open mic during a task ------------------------------------------------------------
+    async def start_open_mic(self) -> None:
+        if self.open_mic:
+            return
+        lis = voice.Listener(
+            continuous=True, muted=self.speaking,
+            on_final=lambda t: asyncio.create_task(self.heard(t)),
+            on_text=lambda t: asyncio.create_task(
+                self.to_overlay({"type": "mic", "on": True, "heard": t})) if t else None,
+            on_speech=lambda: asyncio.create_task(self.to_overlay({"type": "pulse"})))
+        self.open_mic = lis
+        try:
+            await lis.start()
+            await self.to_overlay({"type": "mic", "on": True})
+            await self.log("🎙 Mic open (⌃⌥Space to mute)")
+        except Exception as e:  # noqa: BLE001
+            self.open_mic = None
+            await self.log(f"Voice error: {type(e).__name__}: {e}")
+
+    async def close_open_mic(self) -> None:
+        lis, self.open_mic = self.open_mic, None
+        if lis:
+            await lis.cancel()
+            await self.to_overlay({"type": "mic", "on": False})
+            await self.log("🎙 Mic off")
 
     async def on_stop(self) -> None:
         """⌃⌥X / × / menu Stop: cancel listening if listening, else stop the task."""
@@ -173,10 +243,22 @@ class Agent:
             return
         app = self.current_app if busy else screen.front_window()[0]
         unfinished, unfinished_mode = self.last_unfinished()
+        if not busy:
+            quick = router.route_keywords(text, False, unfinished)
+            if quick["intent"] in ("guide", "do"):
+                # Start now on keywords; GPT confirms in the background and corrects if needed.
+                await self.log(f"→ {quick['intent']} (fast): {text}")
+                self.start(text, quick["intent"], countdown=False)
+                asyncio.create_task(self._confirm_route(text, quick["intent"], app, unfinished))
+                return
         r = await asyncio.to_thread(router.route, text, busy, self.current_task, app,
                                     self.brief or self.memory.context(), unfinished)
         intent, task = r["intent"], r["task"]
         await self.log(f"→ {intent}: {task}")
+        if busy:
+            await self.to_overlay({"type": "mic", "on": bool(self.open_mic), "heard": text})
+        if busy and intent == "ignore":
+            return
         if not busy:
             if intent == "answer":
                 await self.answer(task)
@@ -210,6 +292,27 @@ class Agent:
         else:  # update
             self.current_task = task
             self.push("said", f"{text} (the task is now: {task})")
+
+    async def _confirm_route(self, text: str, fast_intent: str, app: str, unfinished: str) -> None:
+        """GPT's reading of what was said, after the task already started on keywords."""
+        r = await asyncio.to_thread(router.route, text, False, "", app,
+                                    self.brief or self.memory.context(), unfinished)
+        if not router.enabled() or not self.busy():
+            return
+        intent, task = r["intent"], r["task"]
+        if intent == "answer":
+            await self.log(f"→ GPT: actually a question, answering: {task}")
+            self.stop()
+            await self.to_overlay({"type": "clear"})
+            await self.answer(task)
+        elif intent == "resume" and unfinished:
+            await self.log(f"→ GPT: resume '{unfinished}'")
+            self.start(unfinished, fast_intent, countdown=False)
+        elif intent in ("guide", "do") and task and task != text:
+            self.current_task = task
+            self.push("said", f"(clarified task: {task})")
+            if intent != fast_intent:
+                self.set_mode(intent)
 
     def last_unfinished(self) -> tuple[str, str]:
         """(request, mode) of the task that was stopped before finishing, if any."""
@@ -305,8 +408,9 @@ class Agent:
             await self.log(f"▶ {mode.upper()} in {app}: {task}")
             self.memory.start_task(task, mode)
             await self.chat("you", task)
-            await self.panel(task, "thinking", why="Researching the steps…")
+            await self.panel(task, "thinking", why="Looking at your screen…")
             self.speak("On it.")
+            asyncio.create_task(self.start_open_mic())
             await self._loop(task, mode, app)
         except asyncio.CancelledError:
             pass
@@ -315,19 +419,24 @@ class Agent:
         finally:
             await self.to_overlay({"type": "clear"})
             await self.to_ui({"type": "status", "text": "Idle"})
+            await self.close_open_mic()
             self.refresh_brief()
 
     async def _loop(self, task: str, mode: str, app: str) -> None:
         pl = planner.Planner(task, mode, self.brief or self.memory.context())
-        roadmap = await self.research(pl, task, app)
+        roadmap: list[str] = []
+        research = asyncio.create_task(self.research(pl, task, app))  # joins the plan when ready
         w, h = screen.screen_size()
         last_key, repeats, pixels_ok = None, 0, True
         last_step = 0
         actions = 0
+        pixel_stales = 0  # at most one "screen still changing" re-plan per step (videos animate)
 
         for _turn in range(MAX_TURNS):
             if self.stopped or actions >= MAX_ACTIONS:
                 break
+            if research and research.done():
+                roadmap, research = research.result() or roadmap, None
             self._drain(pl)
             await self.quiet()
 
@@ -340,10 +449,15 @@ class Agent:
             app_now, title_now = screen.front_window()
             mark = input_mark()
             job = asyncio.create_task(asyncio.to_thread(pl.next, small, f"{app_now}: {title_now}"))
+            base_thumb = await asyncio.to_thread(screen.thumb) if pixel_stales < 1 else None
             stale = None
             while not job.done():
                 await asyncio.sleep(0.12)
                 stale = self.events and "spoke" or changed_since(mark, self.task_apps)
+                moving = (not stale and base_thumb is not None and not job.done()
+                          and screen.changed(base_thumb, await asyncio.to_thread(screen.thumb)))
+                if moving:
+                    stale, pixel_stales = "screen still changing", pixel_stales + 1
                 if stale or self.stopped:
                     break
             if self.stopped:
@@ -375,7 +489,7 @@ class Agent:
                 await asyncio.sleep(6)
                 return
 
-            key = (name, json.dumps({k: v for k, v in args.items() if k not in ("plan", "step", "x", "y")},
+            key = (name, json.dumps({k: v for k, v in args.items() if k not in ("plan", "step", "x", "y", "why")},
                                     sort_keys=True))
             repeat = key == last_key
             repeats = repeats + 1 if repeat else 0
@@ -384,6 +498,7 @@ class Agent:
                 pixels_ok = True
 
             actions += 1
+            pixel_stales = 0
             t1 = time.perf_counter()
             if repeats >= 2 and name not in ("wait",):
                 result = await self.stuck(pl, args)
@@ -543,7 +658,7 @@ class Agent:
             click_ago, key_ago = screen.seconds_since_input()
             now = time.time()
             if now - click_ago > start:
-                await self.settle(base, quiet_keys=0.4)
+                await self.settle(base, quiet_keys=0.4, cap=0.8)  # plan early; stale check catches the rest
                 return "click"
             if now - key_ago > start:
                 await self.settle(base, quiet_keys=1.0)  # typing is progress: wait for the pause
@@ -554,7 +669,7 @@ class Agent:
             if pixels_ok:
                 cur = await asyncio.to_thread(screen.thumb)
                 if screen.changed(base, cur):
-                    await self.settle(cur)
+                    await self.settle(cur, cap=0.8)
                     return "pixels"
             try:
                 await asyncio.wait_for(self.poke.wait(), 0.25)
@@ -632,6 +747,8 @@ def result_text(why: str) -> str:
                "from where they are now; skip steps that are already done.")
 
 
+UI_REQUEST = re.compile(r"\b(show|where|click|open|find|how do|how to|go to|montre|où|ou est|clique|ouvre|"
+                        r"trouve|comment|va sur)\b", re.IGNORECASE)
 STOP_PHRASES = {"stop", "stop it", "stop shadow", "arrête", "arrete", "arrête-toi", "cancel",
                 "annule", "c'est bon stop"}
 

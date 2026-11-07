@@ -16,7 +16,7 @@ _client: OpenAI | None = None
 _model: str | None = None
 
 IDLE_INTENTS = ("answer", "guide", "do", "resume", "unclear")
-BUSY_INTENTS = ("stop", "ahead", "wait", "question", "guide", "do", "update", "new_task")
+BUSY_INTENTS = ("stop", "ahead", "wait", "question", "guide", "do", "update", "new_task", "ignore")
 
 
 def enabled() -> bool:
@@ -80,6 +80,8 @@ If a task IS running, intent is one of:
 - "update": extra info or a change to the current task ("actually make it 12 euros"). Put the
   updated full task in "task".
 - "new_task": an unrelated new request. Put it in "task".
+- "ignore": the mic is open during the task, so they may think out loud, hesitate ("hmm", "ah ok",
+  "da da da") or talk to someone else. Anything not addressed to the assistant is "ignore".
 "reply" is a very short spoken acknowledgement (max 6 words, same language as the person)."""
 
 
@@ -123,8 +125,14 @@ RESUME_WORDS = ("continue", "go on", "keep going", "resume", "reprends", "repren
                 "vas-y continue", "la suite")
 
 
+FILLERS = re.compile(r"^(h+m+|euh+|uh+|um+|ah+|oh+|ok(ay)?|d'accord|bon|alors|voilà|yeah|ouais|"
+                     r"(da\s*)+|(la\s*)+)$", re.IGNORECASE)
+
+
 def route_keywords(text: str, busy: bool, unfinished: str = "") -> dict:
     t = text.lower().strip(" .!?,")
+    if busy and (not t or FILLERS.match(t)):
+        return {"intent": "ignore", "task": text, "reply": ""}
     if not busy and len(t.split()) <= 4 and any(w in t for w in RESUME_WORDS):
         if unfinished:
             return {"intent": "resume", "task": unfinished, "reply": "Let's pick up where we left off."}

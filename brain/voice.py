@@ -33,13 +33,26 @@ SESSION_CONFIG = {
 
 
 class Listener:
-    """One push-to-talk utterance. `on_text(text)` gets the live text (finals + current
-    partial); `on_auto_send()` fires if the person goes quiet for SILENCE_SEND seconds."""
+    """Mic → Gladia. Two uses:
+    - push-to-talk: `on_text(text)` gets the live text (finals + current partial),
+      `on_auto_send()` fires after SILENCE_SEND seconds of quiet, `finish()` returns the text;
+    - open mic (continuous=True): `on_final(sentence)` fires for every finished sentence and
+      the session stays open until `cancel()`.
+    `muted()` returning True drops what is heard (e.g. while Shadow itself is speaking).
+    `on_speech()` fires when the person starts talking."""
 
     def __init__(self, on_text: Callable[[str], None] | None = None,
-                 on_auto_send: Callable[[], None] | None = None) -> None:
+                 on_auto_send: Callable[[], None] | None = None,
+                 on_final: Callable[[str], None] | None = None,
+                 on_speech: Callable[[], None] | None = None,
+                 muted: Callable[[], bool] | None = None,
+                 continuous: bool = False) -> None:
         self.on_text = on_text
         self.on_auto_send = on_auto_send
+        self.on_final = on_final
+        self.on_speech = on_speech
+        self.muted = muted or (lambda: False)
+        self.continuous = continuous
         self.finals: list[str] = []
         self.partial = ""
         self.last_words = 0.0
@@ -85,13 +98,21 @@ class Listener:
                 data = msg.json()
                 if data.get("type") == "speech_start":
                     self.last_words = loop.time()
+                    if self.on_speech and not self.muted():
+                        self.on_speech()
                 if data.get("type") != "transcript":
+                    continue
+                if self.muted():  # our own voice coming back through the speakers
+                    self.partial = ""
                     continue
                 text = (data["data"].get("utterance") or {}).get("text", "").strip()
                 if data["data"].get("is_final"):
-                    if text:
-                        self.finals.append(text)
                     self.partial = ""
+                    if text and self.continuous:
+                        if self.on_final:
+                            self.on_final(text)
+                    elif text:
+                        self.finals.append(text)
                 else:
                     self.partial = text
                 self.last_words = loop.time()
@@ -101,6 +122,8 @@ class Listener:
             self._closed.set()
 
     async def _watchdog(self) -> None:
+        if self.continuous:
+            return  # open mic: no auto-send, lives until cancel()
         loop = asyncio.get_running_loop()
         started = loop.time()
         while True:
