@@ -65,6 +65,7 @@ class Agent:
         self.shown: dict[str, int] = {}  # Do it: rows/formulas already typed step by step this task
         self.partial = False
         self.narrated = 0  # Do it narrations this task: the first ones teach in full
+        self.task_lines: list[str] | None = None  # this task's log, for the lessons learned after it
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
         self.open_mic: voice.Listener | None = None  # open mic for the running task
@@ -75,6 +76,8 @@ class Agent:
     # --- small outputs --------------------------------------------------------------------
     async def log(self, text: str) -> None:
         print(text, flush=True)
+        if self.task_lines is not None:
+            self.task_lines.append(text[:300])
         await self.to_ui({"type": "log", "text": text})
 
     async def panel(self, text: str, state: str, why: str = "") -> None:
@@ -460,7 +463,12 @@ class Agent:
                 await self.paywall(hint)
                 return
             app, title = screen.front_window()
+            if mode == "do" and not_target(app, title):
+                app, title = await self.wait_for_target(app)
+                if not app:
+                    return
             self.current_task, self.current_app = task, app
+            self.task_lines = []
             self.shown, self.partial, self.prev_action, self.narrated = {}, False, "", 0
             self.task_apps = {app}
             self.current_title = title
@@ -478,6 +486,10 @@ class Agent:
         finally:
             await self.to_overlay({"type": "clear"})
             await self.to_ui({"type": "status", "text": "Idle"})
+            if self.task_lines:  # learn from this run in the background: never on the task's path
+                site = knowledge.site_of(self.current_app, getattr(self, "current_title", ""))
+                asyncio.create_task(asyncio.to_thread(knowledge.learn, site, task, self.task_lines[-80:]))
+            self.task_lines = None
             await self.close_open_mic()
             self.refresh_brief()
 
@@ -489,6 +501,14 @@ class Agent:
             await self.log(f"📘 {app} cheat sheet loaded")
         else:
             asyncio.create_task(asyncio.to_thread(knowledge.build, app, getattr(self, "current_title", "")))
+        site = knowledge.site_of(app, getattr(self, "current_title", ""))
+        if site != app:  # a website in a browser: its own cheat sheet and lessons
+            site_sheet = knowledge.cached(site)
+            if site_sheet:
+                pl.note(f"Cheat sheet for {site} (with lessons from earlier runs; trust it):\n{site_sheet}")
+                await self.log(f"📘 {site} cheat sheet loaded")
+            else:
+                asyncio.create_task(asyncio.to_thread(knowledge.build, site, getattr(self, "current_title", "")))
         roadmap: list[str] = []
         research = asyncio.create_task(self.research(pl, task, app))  # joins the plan when ready
         w, h = screen.screen_size()
@@ -687,6 +707,10 @@ class Agent:
             owner = screen.window_owner_at(*point)
             if self.mode == "do" and owner in screen.SYSTEM_APPS:
                 return await self.blocked(owner), "next"
+            if self.mode == "do" and owner in OWN_APPS:
+                await self.log(f"⛔ not acting in {owner}: it isn't the app of this task")
+                return (f"That spot is in {owner}, which is not part of this task. Never act there: "
+                        "go back to the task's app."), "next"
             if owner and owner not in screen.SYSTEM_APPS:
                 self.task_apps.add(owner)  # the task continues in that app
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1], "label": short(label)})
@@ -737,6 +761,8 @@ class Agent:
         await self.panel(label, "waiting", why)
         at = f" @({point[0]:.0f},{point[1]:.0f})" if point else ""
         await self.log(f"show {name}{at} {short_args(args)}")
+        # Full step for the control page and test harnesses (they act as the person in Guide tests).
+        await self.to_ui({"type": "shown", "name": name, "point": point, "args": args})
         reason = await self.watch(pixels_ok, timeout=6 if name == "scroll" else None)
         return result_text(reason), reason
 
@@ -862,6 +888,22 @@ class Agent:
             if time.time() - quiet_since > 0.5:
                 return
 
+    async def wait_for_target(self, app: str) -> tuple[str, str]:
+        """Do it was started from Claude, a terminal or this control page: never act there.
+        Ask the person to switch to the app they mean, and wait for it (30 s)."""
+        text = f"Switch to the app you want me to use: I won't act in {app}."
+        await self.log(f"⛔ {text}")
+        await self.panel(text, "paused")
+        self.speak("Switch to the app you want me to use.")
+        end = time.time() + 30
+        while time.time() < end and not self.stopped:
+            await asyncio.sleep(0.3)
+            now, title = screen.front_window()
+            if now and not not_target(now, title):
+                return now, title
+        await self.log("■ Stopped: no app to work in")
+        return "", ""
+
     async def blocked(self, app: str) -> str:
         text = f"A system dialog from {app} needs you. Handle it yourself, then press Next."
         await self.log(f"⚠ {text}")
@@ -973,6 +1015,14 @@ def label_of(name: str, args: dict) -> str:
 def short(label: str, n: int = 42) -> str:
     first = label.split(" - ")[0].split(", ")[0]
     return first if len(first) <= n else first[: n - 1] + "…"
+
+
+OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp", "Electron"}
+
+
+def not_target(app: str, title: str) -> bool:
+    """Our own tools: Claude, terminals, editors, and the Shadow Cursor control page."""
+    return app in OWN_APPS or "Shadow Cursor" in title or "127.0.0.1:8765" in title
 
 
 def short_args(args: dict) -> str:

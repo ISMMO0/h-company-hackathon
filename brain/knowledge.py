@@ -32,6 +32,47 @@ Max 22 short lines: first the version / recent changes, then the main screen are
 common tasks as exact click paths. Only what the notes support. Reply with JSON {"sheet": "..."}."""
 
 
+BROWSERS = ("google chrome", "safari", "arc", "firefox", "microsoft edge", "brave browser")
+
+LEARN = """You read the log of an assistant that just operated {site} on a Mac for a person.
+Write up to 3 short lessons (max 20 words each) about {site}'s interface that would make the NEXT run
+faster or more correct: exact places, what worked, what failed and the fix. Only facts about {site}
+itself, nothing about this person or this specific data. If nothing useful, return an empty list.
+Reply with JSON {{"lessons": ["...", "..."]}}."""
+
+
+def site_of(app: str, title: str) -> str:
+    """The real "app" behind a browser tab: 'Untitled spreadsheet - Google Sheets' → 'Google Sheets'."""
+    if app.lower() in BROWSERS and title:
+        last = re.split(r" [-–—|] ", title)[-1].strip()
+        if 2 <= len(last) <= 40:
+            return last
+    return app
+
+
+def learn(site: str, task: str, lines: list[str]) -> None:
+    """After a task (background): add what this run taught about the site to its cheat sheet."""
+    if not router.enabled() or not lines or site.lower() in ("", "finder", "electron", "claude"):
+        return
+    try:
+        new = router._ask(LEARN.format(site=site), f"Task: {task}\nLog:\n" + "\n".join(lines)[:6000])
+        lessons = [str(x)[:200] for x in new.get("lessons", []) if str(x).strip()][:3]
+    except Exception:  # noqa: BLE001 - learning is best-effort
+        return
+    if not lessons:
+        return
+    f = DIR / f"{_slug(site)}.json"
+    data = {}
+    try:
+        data = json.loads(f.read_text())
+    except (OSError, ValueError):
+        data = {"app": site, "sheet": "", "built": time.time()}
+    old = data.get("lessons", [])
+    data["lessons"] = (old + [x for x in lessons if x not in old])[-15:]
+    DIR.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+
+
 def _slug(app: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", app.lower()).strip("-") or "app"
 
@@ -41,8 +82,11 @@ def cached(app: str) -> str:
     f = DIR / f"{_slug(app)}.json"
     try:
         data = json.loads(f.read_text())
-        if time.time() - data.get("built", 0) < TTL:
-            return data.get("sheet", "")
+        sheet = data.get("sheet", "") if time.time() - data.get("built", 0) < TTL else ""
+        lessons = data.get("lessons", [])
+        if lessons:  # what earlier runs taught: never expires
+            sheet += "\nLessons from earlier runs:\n" + "\n".join(f"- {x}" for x in lessons)
+        return sheet.strip()
     except (OSError, ValueError):
         pass
     return ""
@@ -77,8 +121,13 @@ def build(app: str, where: str = "") -> str:
     sheet = sheet[:2500]
     if sheet:
         DIR.mkdir(parents=True, exist_ok=True)
-        (DIR / f"{_slug(app)}.json").write_text(json.dumps(
-            {"app": app, "sheet": sheet, "built": time.time()}, ensure_ascii=False, indent=1))
+        f = DIR / f"{_slug(app)}.json"
+        try:
+            lessons = json.loads(f.read_text()).get("lessons", [])
+        except (OSError, ValueError):
+            lessons = []
+        f.write_text(json.dumps({"app": app, "sheet": sheet, "built": time.time(), "lessons": lessons},
+                                ensure_ascii=False, indent=1))
     return sheet
 
 
