@@ -9,6 +9,7 @@ import json
 import os
 import re
 
+from dotenv import load_dotenv
 from openai import OpenAI
 
 _client: OpenAI | None = None
@@ -19,6 +20,9 @@ BUSY_INTENTS = ("stop", "ahead", "wait", "question", "guide", "do", "update", "n
 
 
 def enabled() -> bool:
+    """True once OPENAI_API_KEY is in .env; re-reads .env so a key added later works without a restart."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        load_dotenv(override=False)
     return bool(os.environ.get("OPENAI_API_KEY"))
 
 
