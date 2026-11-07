@@ -143,19 +143,28 @@ function showStep(msg) {
   win.webContents.send('brain', step);
 }
 
-// While a task runs the panel shows the dot; otherwise a pill next to the real mouse.
+// Listening during a task happens in the panel where it is; otherwise the panel opens at the
+// mouse (where the idle pink cursor sits) and the idle follow resumes when listening ends.
 function setListening(on) {
-  if (!on || lastCursor || lastStep) {
+  if (lastCursor || lastStep) {
     broadcast({ type: 'listening', on });
     return;
   }
+  if (!on) {
+    broadcast({ type: 'listening', on: false });
+    startFollow(false);
+    return;
+  }
+  stopFollow();
   const { x, y } = screen.getCursorScreenPoint();
   const win = displayWindowFor(x, y);
   const { x: ox, y: oy } = win.display.bounds;
   for (const other of windows) {
     if (other !== win) other.webContents.send('brain', { type: 'listening', on: false });
   }
-  win.webContents.send('brain', { type: 'listening', on: true, x: x - ox, y: y - oy });
+  win.webContents.send('brain', {
+    type: 'listening', on: true, x: x - ox + FOLLOW_OFFSET, y: y - oy + FOLLOW_OFFSET,
+  });
 }
 
 function send(msg) {
@@ -167,7 +176,7 @@ ipcMain.on('hidden', () => {
   if (pendingHidden > 0 && --pendingHidden === 0) send({ type: 'hidden' });
 });
 
-const PANEL_MESSAGES = new Set(['next', 'mode', 'mic', 'stop']);
+const PANEL_MESSAGES = new Set(['next', 'mode', 'mic', 'stop', 'hotkey']);
 ipcMain.on('panel', (_event, msg) => {
   if (msg && PANEL_MESSAGES.has(msg.type)) send(msg);
 });
@@ -205,6 +214,7 @@ function handleMessage(msg) {
     case 'listening':
       setListening(Boolean(msg.on));
       break;
+    case 'transcript':
     case 'plan':
     case 'chat':
       broadcast(msg);
@@ -236,8 +246,8 @@ function buildTray() {
   tray = new Tray(path.join(__dirname, 'tray.png'));
   tray.setToolTip('Shadow Cursor');
   const menu = Menu.buildFromTemplate([
-    { label: 'Talk to Shadow', accelerator: HOTKEY, click: () => send({ type: 'hotkey' }) },
-    { label: 'Stop', accelerator: STOP_HOTKEY, click: () => send({ type: 'stop' }) },
+    { label: 'Talk / Send (⌃⌥Space)', click: () => send({ type: 'hotkey' }) },
+    { label: 'Stop / Cancel (⌃⌥X)', click: () => send({ type: 'stop' }) },
     { type: 'separator' },
     {
       label: 'Show pink cursor when idle', type: 'checkbox', checked: true,

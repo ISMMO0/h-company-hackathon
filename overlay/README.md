@@ -17,9 +17,12 @@ While no task runs the pink cursor sits next to the real mouse (+16, +16) and fo
 state line, Next / Guide–Do it / mic / Details / × buttons, collapse chevron) follows the pink cursor;
 the window is click-through everywhere except over the panel, which sends `next` / `mode` / `mic` /
 `stop` to the brain. **Details** opens a second card under the panel with the `plan` steps and the
-last `chat` lines. While a task runs, `listening` shows the pulsing dot on the panel's state line
-instead of the floating pill. The overlay has no Dock icon and never takes focus. `Control+Alt+Space` (global hotkey) sends `{"type":"hotkey"}` to the brain. It reconnects every second while the brain is
-down. Quit with `Ctrl+C` in the terminal.
+last `chat` lines. `listening` switches the card to listening mode (pulsing dot, hint line, live
+`transcript` text, **Send** = `hotkey` / **Cancel** = `stop`), opened at the mouse when no task runs;
+a `paused` step dims the panel until the next step. The overlay has no Dock icon and never takes
+focus. `Control+Alt+Space` (global hotkey, also the menu bar "Talk / Send") sends `{"type":"hotkey"}`
+and `Control+Alt+X` ("Stop / Cancel") sends `{"type":"stop"}` to the brain. It reconnects every
+second while the brain is down. Quit with `Ctrl+C` in the terminal.
 
 ## Test without the brain
 
@@ -30,10 +33,10 @@ npm run test-server          # fake brain, moves the cursor every 2 s within 144
 npm run test-server 2560 1440   # optional: width height in screen points
 ```
 
-`test-server.js` listens on port 8765, logs everything the overlay sends (`hello`, `next`, `mode`, `mic`,
-`stop`), and replays a 5-step task every 2 s: a `cursor` message with a random position and label, a
-`step` for the panel, the full `plan`, a `chat` line now and then and `listening` on/off during step 2;
-then `clear` and a 6 s idle pause where the pink cursor follows the mouse.
+`test-server.js` listens on port 8765, logs everything the overlay sends (`hello`, `hotkey`, `next`,
+`mode`, `mic`, `stop`), and loops: 3 s idle (the pink cursor follows the mouse), a listening session
+with a growing `transcript`, two task steps (`cursor` with a random position and label, `step`,
+`plan`, a `chat` line), a second utterance mid-task, a `paused` step, the last three steps, then `clear`.
 
 ## Files
 

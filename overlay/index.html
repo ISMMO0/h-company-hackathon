@@ -68,7 +68,7 @@
     -webkit-line-clamp: 3;
     overflow-wrap: anywhere;
   }
-  #state {
+  .state {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -76,7 +76,7 @@
     font-size: 11px;
     color: rgba(255, 255, 255, 0.55);
   }
-  #buttons { display: flex; gap: 6px; margin-top: 8px; }
+  .buttons { display: flex; gap: 6px; margin-top: 8px; }
   #card button {
     display: flex;
     align-items: center;
@@ -96,7 +96,7 @@
   #card #chevron { padding: 0; background: transparent; }
   #chevron svg { transition: transform 150ms; }
   #card.collapsed { padding: 3px; }
-  #card.collapsed #text, #card.collapsed #state, #card.collapsed #buttons { display: none; }
+  #card.collapsed #text, #card.collapsed .state, #card.collapsed .buttons { display: none; }
   #card.collapsed #chevron svg { transform: rotate(-90deg); }
   #stop { font-size: 15px; }
   #details-button.on { background: rgba(255, 62, 165, 0.35); }
@@ -119,29 +119,28 @@
   #chat .line { padding: 2px 0; overflow-wrap: anywhere; }
   #chat .who { color: rgba(255, 255, 255, 0.5); margin-right: 5px; }
   #chat .shadow .who { color: #ff3ea5; }
-  #listening {
-    position: absolute;
-    left: 0;
-    top: 0;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 5px 10px 5px 8px;
-    border-radius: 999px;
-    background: rgba(20, 20, 24, 0.9);
-    color: #fff;
-    white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  /* Listening mode: dot + hint, live text, Send / Cancel instead of the step and its buttons. */
+  #listen { display: none; }
+  #panel.listening #listen { display: block; }
+  #panel.listening .row, #panel.listening #state, #panel.listening #buttons { display: none; }
+  #panel.listening #card { padding: 8px 10px; }
+  #listen .state { margin-top: 0; }
+  #live {
+    margin-top: 6px;
+    min-height: 1.3em;
+    max-height: 6.5em; /* ~5 lines */
+    overflow-y: auto;
+    overflow-wrap: anywhere;
   }
-  #listening.hidden { display: none; }
+  #panel.paused:not(.listening) #box { opacity: 0.6; }
   .dot {
-    width: 10px;
-    height: 10px;
+    flex: none;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #ff3ea5;
     animation: pulse 1s ease-in-out infinite;
   }
-  #state .dot { width: 8px; height: 8px; }
   @keyframes pulse {
     0%, 100% { transform: scale(0.8); opacity: 0.6; }
     50% { transform: scale(1.2); opacity: 1; }
@@ -163,13 +162,21 @@
         <div id="text"></div>
         <button id="chevron" title="Collapse"><svg viewBox="0 0 12 12"><path d="M2 4l4 4 4-4"/></svg></button>
       </div>
-      <div id="state"></div>
-      <div id="buttons">
+      <div id="state" class="state"></div>
+      <div id="buttons" class="buttons">
         <button id="next" title="I did it / skip">Next</button>
         <button id="mode" title="Switch mode">Guide</button>
         <button id="mic" title="Talk"><svg viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="7" rx="2"/><path d="M2 6a4 4 0 0 0 8 0M6 10v1.5"/></svg></button>
         <button id="details-button" title="All steps and conversation">Details</button>
         <button id="stop" title="Stop">×</button>
+      </div>
+      <div id="listen">
+        <div class="state"><span class="dot"></span>Listening… ⌃⌥Space to send · ⌃⌥X to cancel</div>
+        <div id="live"></div>
+        <div class="buttons">
+          <button id="send" title="Send now">Send</button>
+          <button id="cancel" title="Cancel">Cancel</button>
+        </div>
       </div>
     </div>
     <div id="details" class="hidden">
@@ -178,7 +185,6 @@
     </div>
   </div>
 </div>
-<div id="listening" class="hidden"><span class="dot"></span>Listening…</div>
 <script>
   const cursor = document.getElementById('cursor');
   const label = document.getElementById('label');
@@ -192,9 +198,9 @@
   const details = document.getElementById('details');
   const plan = document.getElementById('plan');
   const chat = document.getElementById('chat');
-  const listening = document.getElementById('listening');
+  const live = document.getElementById('live');
 
-  const STATES = { thinking: 'Thinking…', waiting: 'Your turn', acting: 'Doing it…', done: 'Done' };
+  const STATES = { thinking: 'Thinking…', waiting: 'Your turn', acting: 'Doing it…', paused: 'Paused', done: 'Done' };
   const WHO = { you: 'You', shadow: 'Shadow' };
   const PANEL_W = 320; // card max width + offset, used to keep it on screen
   const CHAT_KEEP = 20;
@@ -203,7 +209,6 @@
   let panelOn = false;
   let doneTimer = null;
   let panelPos = { x: 0, y: 0 };
-  let stateText = '';
   let listeningOn = false;
   let chatLines = [];
 
@@ -219,12 +224,12 @@
     modeButton.textContent = mode === 'do' ? 'Do it' : 'Guide';
   }
 
-  // The state line shows the listening dot while the brain listens during a task.
-  function renderState() {
-    state.textContent = stateText;
-    if (listeningOn && panelOn) {
-      state.innerHTML = '<span class="dot"></span>Listening…';
-    }
+  // The panel is open while a step is shown or the brain listens; listening takes over the card.
+  function render() {
+    panel.classList.toggle('listening', listeningOn);
+    panel.classList.toggle('hidden', !(panelOn || listeningOn));
+    if (!panelOn && !listeningOn) window.overlay.interactive(false);
+    place(panelPos.x, panelPos.y);
   }
 
   function renderPlan(steps) {
@@ -253,9 +258,9 @@
 
   function hidePanel() {
     panelOn = false;
-    panel.classList.add('hidden');
+    panel.classList.remove('paused');
     clearTimeout(doneTimer);
-    window.overlay.interactive(false);
+    render();
   }
 
   box.addEventListener('mouseenter', () => window.overlay.interactive(true));
@@ -264,6 +269,8 @@
   document.getElementById('next').addEventListener('click', () => window.overlay.send({ type: 'next' }));
   document.getElementById('mic').addEventListener('click', () => window.overlay.send({ type: 'mic' }));
   document.getElementById('stop').addEventListener('click', () => window.overlay.send({ type: 'stop' }));
+  document.getElementById('send').addEventListener('click', () => window.overlay.send({ type: 'hotkey' }));
+  document.getElementById('cancel').addEventListener('click', () => window.overlay.send({ type: 'stop' }));
   modeButton.addEventListener('click', () => {
     setMode(mode === 'do' ? 'guide' : 'do');
     window.overlay.send({ type: 'mode', mode });
@@ -291,11 +298,11 @@
       case 'step':
         if (msg.x !== undefined) place(msg.x, msg.y);
         text.textContent = msg.text || '';
-        stateText = STATES[msg.state] || '';
+        state.textContent = STATES[msg.state] || '';
+        panel.classList.toggle('paused', msg.state === 'paused');
         if (msg.mode) setMode(msg.mode);
         panelOn = true;
-        renderState();
-        panel.classList.remove('hidden');
+        render();
         clearTimeout(doneTimer);
         if (msg.state === 'done') doneTimer = setTimeout(hidePanel, 6000);
         break;
@@ -314,7 +321,7 @@
         break;
       case 'show':
         cursor.classList.remove('hidden');
-        if (panelOn) panel.classList.remove('hidden');
+        if (panelOn || listeningOn) panel.classList.remove('hidden');
         break;
       case 'clear':
         if (!msg.keepCursor) cursor.classList.add('hidden');
@@ -326,12 +333,13 @@
         break;
       case 'listening':
         listeningOn = Boolean(msg.on);
-        if (msg.x !== undefined) {
-          listening.style.left = `${msg.x + 42}px`;
-          listening.style.top = `${msg.y + 38}px`;
-        }
-        listening.classList.toggle('hidden', !(listeningOn && msg.x !== undefined));
-        renderState();
+        if (listeningOn) live.textContent = '';
+        if (msg.x !== undefined) place(msg.x, msg.y);
+        render();
+        break;
+      case 'transcript':
+        live.textContent = msg.text || '';
+        live.scrollTop = live.scrollHeight;
         break;
     }
   });
