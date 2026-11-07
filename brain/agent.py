@@ -22,7 +22,7 @@ from pathlib import Path
 
 from PIL import ImageDraw
 
-from brain import knowledge, linkup, planner, router, screen, voice
+from brain import billing, knowledge, linkup, planner, router, screen, voice
 
 try:
     from brain.memory import Memory
@@ -315,6 +315,19 @@ class Agent:
             if intent != fast_intent:
                 self.set_mode(intent)
 
+    async def paywall(self, hint: str) -> None:
+        """Free quota used: offer Shadow Pro through Stripe Checkout (test mode)."""
+        await self.log(f"💳 {hint}")
+        self.speak("You've used your free tasks for today. Upgrade to Shadow Pro to keep going.", whole=True)
+        try:
+            url = await asyncio.to_thread(billing.create_checkout)
+            sources = [{"title": "Upgrade to Shadow Pro (9 €/month)", "url": url}]
+        except billing.ERRORS as e:
+            await self.log(f"Stripe not ready ({e}); upgrade from http://127.0.0.1:8765")
+            sources = [{"title": "Open Shadow Cursor to upgrade", "url": "http://127.0.0.1:8765"}]
+        await self.to_overlay({"type": "answer", "text": "You've used today's free tasks. Shadow Pro "
+                               "gives you unlimited guidance.", "sources": sources})
+
     def last_unfinished(self) -> tuple[str, str]:
         """(request, mode) of the task that was stopped before finishing, if any."""
         cur = getattr(self.memory, "current", None)
@@ -402,6 +415,10 @@ class Agent:
             for n in (3, 2, 1) if countdown else ():
                 await self.to_ui({"type": "status", "text": f"Switch to your app… {n}"})
                 await asyncio.sleep(1)
+            allowed, hint = billing.allow_task()
+            if not allowed:
+                await self.paywall(hint)
+                return
             app, title = screen.front_window()
             self.current_task, self.current_app = task, app
             self.task_apps = {app}

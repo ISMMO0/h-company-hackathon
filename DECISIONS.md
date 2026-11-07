@@ -2,6 +2,13 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 20:00** Stripe in the product (Devin, PR #11): Shadow Pro, free quota per day (default 20,
+  `SHADOW_FREE_TASKS=2` to show the paywall in the demo), Stripe Checkout in test mode only, paywall
+  card with the checkout link. Also: Gladia custom vocabulary (Claude, Rekordbox, Devin, hot cue…);
+  app cheat sheets as an automatic background cache (never required; the core stays "web search per
+  question → show it"); playbooks ask for the interface as of today; no-progress (5 actions on the
+  same step) and scroll back-and-forth detection; scroll has a position; 12 s Holo timeout with a fast
+  hedged call after 3 s.
 - **Sat 19:00** Live mode shipped (docs/live-mode-plan.md, reviewed by Devin; overlay v6 by Devin):
   the mic stays open during a task (⌃⌥Space = mute/unmute; Gladia gets silence while Shadow
   speaks so it never hears itself); the pink cursor makes a tentative guess while you're still

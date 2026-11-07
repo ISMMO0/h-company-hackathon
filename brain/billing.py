@@ -19,7 +19,8 @@ ERRORS = (RuntimeError, stripe.StripeError)  # what create_checkout / verify can
 
 
 def free_tasks() -> int:
-    return int(os.environ.get("SHADOW_FREE_TASKS", "5"))
+    # 20 so rehearsals don't hit the wall; set SHADOW_FREE_TASKS=2 to show the paywall in the demo.
+    return int(os.environ.get("SHADOW_FREE_TASKS", "20"))
 
 
 # -- quota ------------------------------------------------------------------------------------
