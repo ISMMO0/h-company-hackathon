@@ -8,6 +8,7 @@ const HOTKEY = 'Control+Alt+Space';
 
 let windows = []; // one per display, same order as screen.getAllDisplays()
 let lastCursor = null; // { x, y, label } in global screen points
+let lastStep = null;
 let socket = null;
 
 function createWindow(display) {
@@ -17,6 +18,7 @@ function createWindow(display) {
     frame: false,
     hasShadow: false,
     focusable: false,
+    acceptFirstMouse: true,
     skipTaskbar: true,
     roundedCorners: false,
     resizable: false,
@@ -33,7 +35,7 @@ function createWindow(display) {
   });
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setIgnoreMouseEvents(true);
+  win.setIgnoreMouseEvents(true, { forward: true });
   win.setBounds(display.bounds);
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => win.showInactive());
@@ -46,7 +48,10 @@ function rebuildWindows() {
   windows = screen.getAllDisplays().map(createWindow);
   if (lastCursor) {
     const win = windows[0];
-    win.webContents.once('did-finish-load', () => moveCursor(lastCursor));
+    win.webContents.once('did-finish-load', () => {
+      moveCursor(lastCursor);
+      if (lastStep) showStep(lastStep);
+    });
   }
 }
 
@@ -67,6 +72,25 @@ function moveCursor({ x, y, label }) {
     if (other !== win) other.webContents.send('brain', { type: 'clear' });
   }
   win.webContents.send('brain', { type: 'cursor', x: x - ox, y: y - oy, label: label || '' });
+}
+
+// The panel follows the pink cursor; before the first cursor it opens at the user's mouse.
+function showStep(msg) {
+  lastStep = msg;
+  let win;
+  let step = { type: 'step', text: msg.text || '', mode: msg.mode, state: msg.state };
+  if (lastCursor) {
+    win = displayWindowFor(lastCursor.x, lastCursor.y);
+  } else {
+    const { x, y } = screen.getCursorScreenPoint();
+    win = displayWindowFor(x, y);
+    const { x: ox, y: oy } = win.display.bounds;
+    step = { ...step, x: x - ox, y: y - oy };
+    for (const other of windows) {
+      if (other !== win) other.webContents.send('brain', { type: 'clear' });
+    }
+  }
+  win.webContents.send('brain', step);
 }
 
 function setListening(on) {
@@ -92,10 +116,24 @@ ipcMain.on('hidden', () => {
   if (pendingHidden > 0 && --pendingHidden === 0) send({ type: 'hidden' });
 });
 
+const PANEL_MESSAGES = new Set(['next', 'mode', 'mic', 'stop']);
+ipcMain.on('panel', (_event, msg) => {
+  if (msg && PANEL_MESSAGES.has(msg.type)) send(msg);
+});
+
+// Click-through everywhere except while the pointer is over the panel.
+ipcMain.on('interactive', (event, on) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true });
+});
+
 function handleMessage(msg) {
   switch (msg.type) {
     case 'cursor':
       moveCursor(msg);
+      break;
+    case 'step':
+      showStep(msg);
       break;
     case 'hide':
       pendingHidden = windows.length;
@@ -106,6 +144,7 @@ function handleMessage(msg) {
       break;
     case 'clear':
       lastCursor = null;
+      lastStep = null;
       broadcast({ type: 'clear' });
       break;
     case 'listening':
