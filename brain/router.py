@@ -71,7 +71,9 @@ For "guide"/"do", rewrite "task" as a short imperative ("Create a product called
 Keep every concrete goal the person mentioned, in order, and fix names that speech recognition likely
 garbled (songs, artists, files, French words), e.g. "Genesio OG tea et psychologique par Chia Kola" →
 "Load 'OG' by Genezio and 'Psychologique' by Tiakola onto the two decks, then show how to match their BPM".
-Choose "guide" if they ask to be shown or to learn, even if they also say "for me".
+"do" = Shadow performs the clicks (with spoken explanations): "can you create…", "do it", "make it for me",
+"do it and explain what you're doing", "I want to learn by watching you". "guide" = the person does the
+clicks themselves: "show me where", "how do I…", "guide me", "walk me through it".
 When in doubt between answer and guide/do, choose guide.
 
 If a task IS running, intent is one of:

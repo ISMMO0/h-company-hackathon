@@ -126,6 +126,8 @@ Prefer clicking visible UI elements over keyboard shortcuts so the person learns
 Names in the task come from speech recognition and are often misheard, especially song titles, artists,
 files and non-English words ("Chia Kola" may be "Tiakola", "OG tea" may be "OG feat."). Match them to the
 closest names visible on screen and use the on-screen spelling; if unsure between several, use 'say' to ask.
+Never ask to click something that is already selected or focused (e.g. a cell that already has the blue
+border): go straight to the next action, e.g. 'type' into it.
 Never ask to click an empty area "to focus" something. Typing a URL is a last resort: only after the
 on-page navigation clearly failed, and say so with 'say' first.
 If something the plan expects isn't on screen after one look (or one scroll), it may have been removed or
