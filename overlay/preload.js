@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld('overlay', {
   hidden: () => ipcRenderer.send('hidden'),
   send: (msg) => ipcRenderer.send('panel', msg),
   interactive: (on) => ipcRenderer.send('interactive', on),
+  open: (url) => ipcRenderer.send('open', url),
 });

@@ -19,10 +19,13 @@ the window is click-through everywhere except over the panel, which sends `next`
 `stop` to the brain. **Details** opens a second card under the panel with the `plan` steps and the
 last `chat` lines. `listening` switches the card to listening mode (pulsing dot, hint line, live
 `transcript` text, **Send** = `hotkey` / **Cancel** = `stop`), opened at the mouse when no task runs;
-a `paused` step dims the panel until the next step. The overlay has no Dock icon and never takes
-focus. `Control+Alt+Space` (global hotkey, also the menu bar "Talk / Send") sends `{"type":"hotkey"}`
-and `Control+Alt+X` ("Stop / Cancel") sends `{"type":"stop"}` to the brain. It reconnects every
-second while the brain is down. Quit with `Ctrl+C` in the terminal.
+a `paused` step dims the panel until the next step. A step's optional `why` shows as a muted line under
+the instruction. An `answer` message opens an answer card (text, up to 3 source titles that open in the
+default browser, and if `offer` is set the offer line with **Show me** / **Do it** = `followup`
+guide / do); it closes on ×, after 30 s, or when a step or listening starts. The overlay has no Dock
+icon and never takes focus. `Control+Alt+Space` (global hotkey, also the menu bar "Talk / Send")
+sends `{"type":"hotkey"}` and `Control+Alt+X` ("Stop / Cancel") sends `{"type":"stop"}` to the brain.
+It reconnects every second while the brain is down. Quit with `Ctrl+C` in the terminal.
 
 ## Test without the brain
 
@@ -34,13 +37,14 @@ npm run test-server 2560 1440   # optional: width height in screen points
 ```
 
 `test-server.js` listens on port 8765, logs everything the overlay sends (`hello`, `hotkey`, `next`,
-`mode`, `mic`, `stop`), and loops: 3 s idle (the pink cursor follows the mouse), a listening session
-with a growing `transcript`, two task steps (`cursor` with a random position and label, `step`,
-`plan`, a `chat` line), a second utterance mid-task, a `paused` step, the last three steps, then `clear`.
+`mode`, `mic`, `stop`, `followup`), and loops: 3 s idle (the pink cursor follows the mouse), a question
+answered with an `answer` card (sources + offer), a listening session with a growing `transcript`, two
+task steps (`cursor` with a random position and label, `step` with a `why`, `plan`, a `chat` line), a
+second utterance mid-task, a `paused` step, the last three steps, then `clear`.
 
 ## Files
 
 - `main.js` — windows (one per display), WebSocket client, routes messages to the right display.
-- `preload.js` — exposes `overlay.onMessage` / `overlay.hidden` / `overlay.send` / `overlay.interactive` to the page.
+- `preload.js` — exposes `overlay.onMessage` / `overlay.hidden` / `overlay.send` / `overlay.interactive` / `overlay.open` to the page.
 - `index.html` — pink arrow + label bubble + panel + details card, 400 ms ease-out glide.
 - `test-server.js` — fake brain for manual testing.
