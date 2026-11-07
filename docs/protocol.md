@@ -1,4 +1,4 @@
-# Overlay ⇄ brain protocol (v4)
+# Overlay ⇄ brain protocol (v5)
 
 The Python **brain** (`brain/`) runs one local server on `127.0.0.1:8765`:
 - `http://127.0.0.1:8765/` — the control page (text box, mode, Go/Stop, step log).
@@ -17,6 +17,8 @@ primary display. The brain does all pixel ↔ point conversion.
 | `{"type":"show"}` | Show the cursor and panel again. |
 | `{"type":"clear"}` | Task finished or stopped: hide cursor, bubble and panel. |
 | `{"type":"listening","on":true}` | **Push-to-talk opened.** Open the panel (at the user's mouse if no task runs, else where it is) in *listening* mode: pulsing pink dot, "Listening… ⌃⌥Space to send · ⌃⌥X to cancel", and an empty live-text area. `"on":false` closes listening mode (back to the step, or closes the panel if no task runs). |
+| `{"type":"step",…,"why":"Settings is where skills live"}` | Optional `why` on any step: show it under the instruction in a muted line (e.g. "Clicking Settings" / "that's where skills live"). |
+| `{"type":"answer","text":"Pink Mamma is the most-cited…","sources":[{"title":"Le Fooding","url":"https://…"}],"offer":"Want me to show it on Maps?"}` | **Answer card** for pure questions (no task running): the text (up to ~6 lines, scrolls), up to 3 source titles (small, muted, clickable → open URL in the browser), and if `offer` is set, the offer line with two buttons **Show me** and **Do it**. Closes on ×, after 30 s, or when a new task starts. |
 | `{"type":"transcript","text":"show me how to"}` | Live words while listening (replace the live-text area; partials and finals already joined by the brain). |
 | `{"type":"plan","steps":[{"text":"Click the search bar","status":"done"}, …]}` | Full step list for the **details** view. `status`: `"done"` (✓), `"current"` (highlighted), `"todo"` (muted). Sent whenever it changes; always the whole list. |
 | `{"type":"chat","who":"you","text":"Actually search for MKBHD"}` | One line of conversation for the details view (`who`: `"you"` or `"shadow"`). Append; `clear` empties it. |
@@ -31,6 +33,7 @@ primary display. The brain does all pixel ↔ point conversion.
 | `{"type":"next"}` | Panel **Next** button: "I did it / skip": the brain re-checks the screen now. |
 | `{"type":"mode","mode":"do"}` | Panel mode toggle (**Guide** ⇄ **Do it**), takes effect on the next step. |
 | `{"type":"mic"}` | Panel mic button: same as the hotkey. |
+| `{"type":"followup","mode":"guide"}` | Answer card **Show me** (`"guide"`) or **Do it** (`"do"`): the brain turns the offer into a task. |
 | `{"type":"stop"}` | Panel **×**, menu bar Stop or ⌃⌥X. If listening: **cancel** the utterance only. Otherwise stop the task. |
 
 ## The panel

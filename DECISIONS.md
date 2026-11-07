@@ -2,6 +2,12 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sat 15:40** Backend v3 approved (docs/backend-v3-plan.md), fallback tag `v2-demo`:
+  knowledge before the first click (Linkup structured playbook, ≤3.5 s, seeds Holo's plan;
+  targeted lookup when stuck); an ANSWER path for pure questions (answer card + "show me /
+  do it"); a `why` on every action, spoken in Do it mode. OpenAI only routes utterances and
+  merges the playbook, never in the step loop; optional (keyword fallback without the key).
+  Protocol v5: step.why, answer card, followup.
 - **Sat 15:00** Backend v2 shipped (brain/agent.py, planner.py, voice.py; memory.py + bench by
   Devin; overlay v4 by Devin). Bench on a real screenshot: plan p50 0.8 s, point 0.43 s
   (crop), total ~1.3 s/step, 3/3 hits (was 2.4-2.8 s). Planner: holo4-27b, thinking effort
