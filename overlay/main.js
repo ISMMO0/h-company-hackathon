@@ -111,16 +111,18 @@ function stopFollow() {
   followTimer = null;
 }
 
-function moveCursor({ x, y, label }) {
+function moveCursor({ x, y, label, tentative }) {
   stopFollow();
-  lastCursor = { x, y, label };
+  lastCursor = { x, y, label, tentative };
   const win = displayWindowFor(x, y);
   cursorWin = win;
   const { x: ox, y: oy } = win.display.bounds;
   for (const other of windows) {
     if (other !== win) other.webContents.send('brain', { type: 'clear' });
   }
-  win.webContents.send('brain', { type: 'cursor', x: x - ox, y: y - oy, label: label || '' });
+  win.webContents.send('brain', {
+    type: 'cursor', x: x - ox, y: y - oy, label: label || '', tentative: Boolean(tentative),
+  });
 }
 
 // The panel follows the pink cursor; before the first cursor it opens at the user's mouse.
@@ -234,6 +236,8 @@ function handleMessage(msg) {
     case 'answer':
       showAnswer(msg);
       break;
+    case 'pulse': // only the display showing the pink cursor draws anything
+    case 'mic':
     case 'transcript':
     case 'plan':
     case 'chat':

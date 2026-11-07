@@ -40,6 +40,31 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
   #label:empty { display: none; }
+  /* Tentative cursor: a guess while the person is still talking. */
+  #cursor.tentative { opacity: 0.55; }
+  #cursor.tentative svg { animation: soft 1.4s ease-in-out infinite; }
+  #cursor.tentative #label { font-style: italic; }
+  @keyframes soft {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  /* Speech-start pulse: one ring expanding from the arrow tip. */
+  #ring {
+    position: absolute;
+    left: -16px;
+    top: -16px;
+    width: 32px;
+    height: 32px;
+    border: 2px solid #ff3ea5;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #ring.on { animation: ring 600ms ease-out; }
+  @keyframes ring {
+    0% { transform: scale(0.3); opacity: 0.9; }
+    100% { transform: scale(2); opacity: 0; }
+  }
   #box {
     position: absolute;
     left: 26px;
@@ -106,6 +131,21 @@
   #card.collapsed #text, #card.collapsed #why, #card.collapsed .state, #card.collapsed .buttons { display: none; }
   #card.collapsed #chevron svg { transform: rotate(-90deg); }
   #stop, #answer-close { font-size: 15px; }
+  /* Open mic during a task: live dot when on, muted (slashed) icon when off. */
+  #mic .live, #mic .slash { display: none; }
+  #mic.on .live { display: block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: #ff3ea5; animation: pulse 1s ease-in-out infinite; }
+  #mic.off { color: rgba(255, 255, 255, 0.45); }
+  #mic.off .slash { display: block; }
+  #heard {
+    margin-top: 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    overflow-wrap: anywhere;
+    transition: opacity 800ms;
+  }
+  #heard:empty { display: none; }
+  #heard.fade { opacity: 0; }
+  #card.collapsed #heard { display: none; }
   #details-button.on { background: rgba(255, 62, 165, 0.35); }
   #details {
     max-height: 320px;
@@ -182,6 +222,7 @@
     <path d="M3 2 L3 19 L7.5 15 L10.5 21.5 L13.5 20.2 L10.5 13.8 L16.5 13.8 Z"
           fill="#ff3ea5" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
   </svg>
+  <div id="ring"></div>
   <div id="label"></div>
 </div>
 <div id="panel" class="hidden">
@@ -196,10 +237,11 @@
       <div id="buttons" class="buttons">
         <button id="next" title="I did it / skip">Next</button>
         <button id="mode" title="Switch mode">Guide</button>
-        <button id="mic" title="Talk"><svg viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="7" rx="2"/><path d="M2 6a4 4 0 0 0 8 0M6 10v1.5"/></svg></button>
+        <button id="mic" title="Talk"><svg viewBox="0 0 12 12"><rect x="4" y="1" width="4" height="7" rx="2"/><path d="M2 6a4 4 0 0 0 8 0M6 10v1.5"/><path class="slash" d="M1.5 1.5l9 9"/></svg><span class="live"></span></button>
         <button id="details-button" title="All steps and conversation">Details</button>
         <button id="stop" title="Stop">×</button>
       </div>
+      <div id="heard"></div>
       <div id="listen">
         <div class="state"><span class="dot"></span>Listening… ⌃⌥Space to send · ⌃⌥X to cancel</div>
         <div id="live"></div>
@@ -232,6 +274,7 @@
 <script>
   const cursor = document.getElementById('cursor');
   const label = document.getElementById('label');
+  const ring = document.getElementById('ring');
   const panel = document.getElementById('panel');
   const box = document.getElementById('box');
   const card = document.getElementById('card');
@@ -239,6 +282,8 @@
   const why = document.getElementById('why');
   const state = document.getElementById('state');
   const modeButton = document.getElementById('mode');
+  const micButton = document.getElementById('mic');
+  const heard = document.getElementById('heard');
   const detailsButton = document.getElementById('details-button');
   const details = document.getElementById('details');
   const plan = document.getElementById('plan');
@@ -256,6 +301,7 @@
   const CHAT_SHOW = 6;
   const SOURCES_SHOW = 3;
   const ANSWER_MS = 30000;
+  const HEARD_MS = 6000;
   let mode = 'guide';
   let panelOn = false;
   let doneTimer = null;
@@ -264,6 +310,7 @@
   let answerOn = false;
   let answerTimer = null;
   let chatLines = [];
+  let heardTimer = null;
 
   function place(x, y) {
     panelPos = { x, y };
@@ -344,6 +391,19 @@
     answerTimer = setTimeout(hideAnswer, ANSWER_MS);
   }
 
+  function setMic(msg) {
+    micButton.classList.toggle('on', msg.on === true);
+    micButton.classList.toggle('off', msg.on === false);
+    if (!msg.heard) return;
+    clearTimeout(heardTimer);
+    heard.classList.remove('fade');
+    heard.textContent = msg.heard;
+    heardTimer = setTimeout(() => {
+      heard.classList.add('fade');
+      heardTimer = setTimeout(() => { heard.textContent = ''; }, 800);
+    }, HEARD_MS);
+  }
+
   function followup(mode) {
     window.overlay.send({ type: 'followup', mode });
     hideAnswer();
@@ -375,14 +435,23 @@
       case 'follow':
         cursor.style.transition = msg.glide ? '' : 'none';
         cursor.style.transform = `translate(${msg.x}px, ${msg.y}px)`;
-        cursor.classList.remove('hidden');
+        cursor.classList.remove('hidden', 'tentative');
         break;
       case 'cursor':
         cursor.style.transition = '';
         cursor.style.transform = `translate(${msg.x}px, ${msg.y}px)`;
         place(msg.x, msg.y);
         label.textContent = msg.label || '';
+        cursor.classList.toggle('tentative', Boolean(msg.tentative));
         cursor.classList.remove('hidden');
+        break;
+      case 'pulse':
+        ring.classList.remove('on');
+        void ring.offsetWidth; // restart the animation
+        ring.classList.add('on');
+        break;
+      case 'mic':
+        setMic(msg);
         break;
       case 'step':
         hideAnswer();
@@ -416,7 +485,11 @@
         break;
       case 'clear':
         if (!msg.keepCursor) cursor.classList.add('hidden');
+        cursor.classList.remove('tentative');
         label.textContent = '';
+        clearTimeout(heardTimer);
+        heard.textContent = '';
+        micButton.classList.remove('on', 'off');
         chatLines = [];
         renderPlan([]);
         renderChat();
