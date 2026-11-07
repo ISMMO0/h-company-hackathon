@@ -45,7 +45,8 @@ def site_of(app: str, title: str) -> str:
     """The real "app" behind a browser tab: 'Untitled spreadsheet - Google Sheets' → 'Google Sheets'."""
     if app.lower() in BROWSERS and title:
         parts = [p.strip() for p in re.split(r" [-–—|] ", title) if p.strip()]
-        while len(parts) > 1 and parts[-1].lower() in (app.lower(), "google chrome", "safari", "arc"):
+        while len(parts) > 1 and (parts[-1].lower() in (app.lower(), "google chrome", "safari", "arc")
+                                  or re.search(r"audio|playing|recording|en cours|lecture", parts[-1].lower())):
             parts.pop()  # 'Sheet - Google Sheets - Google Chrome': drop the browser's own name
         if len(parts) > 1 and 2 <= len(parts[-1]) <= 40:
             return parts[-1]

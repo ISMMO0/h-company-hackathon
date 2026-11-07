@@ -66,6 +66,7 @@ class Agent:
         self.partial = False
         self.narrated = 0  # Do it narrations this task: the first ones teach in full
         self.last_at = None
+        self.prev_text = ""
         self.task_lines: list[str] | None = None  # this task's log, for the lessons learned after it
         self.task_apps: set[str] = set()  # apps this task happens in; input elsewhere is ignored
         self.brief = ""  # short session summary, rewritten by GPT in the background
@@ -760,8 +761,9 @@ class Agent:
                         if point and self.last_at else 1e9)
                 if self.prev_action == "double_click":  # already editing: replace, don't insert at the caret
                     await asyncio.to_thread(screen.press, "cmd+a")
-                elif (self.prev_action == "type" and dist < 90) or (self.prev_action == "click" and dist < 15):
-                    pass  # still typing in the same active field: a click would move the caret mid-text
+                elif (self.prev_action == "type" and self.prev_text.endswith("\n") and dist < 90) \
+                        or (self.prev_action == "click" and dist < 15):
+                    pass  # the next line of the same field, or just clicked it: a click would move the caret
                 elif point:  # focus the field first
                     await asyncio.to_thread(screen.click, *point)
                     await asyncio.sleep(0.2)
@@ -771,6 +773,7 @@ class Agent:
             elif name == "scroll":
                 await asyncio.to_thread(screen.scroll, args.get("direction", "down"), 5, point)
             self.prev_action = name
+            self.prev_text = args.get("text", "") if name == "type" else ""
             self.last_at = point or self.last_at
             await asyncio.sleep(0.4)  # let the app react
             if self.partial:

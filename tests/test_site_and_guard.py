@@ -8,6 +8,7 @@ def test_site_of_browser_tab():
     assert knowledge.site_of("rekordbox", "rekordbox 7") == "rekordbox"
     assert knowledge.site_of("Google Chrome", "Sheet - Google Sheets - Google Chrome") == "Google Sheets"
     assert knowledge.site_of("Google Chrome", "404 - Google Chrome") == "Google Chrome"
+    assert knowledge.site_of("Google Chrome", "Me at the zoo - YouTube - Audio playing - Google Chrome") == "YouTube"
 
 
 def test_never_act_in_our_own_tools():
