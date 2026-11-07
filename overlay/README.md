@@ -22,7 +22,13 @@ last `chat` lines. `listening` switches the card to listening mode (pulsing dot,
 a `paused` step dims the panel until the next step. A step's optional `why` shows as a muted line under
 the instruction. An `answer` message opens an answer card (text, up to 3 source titles that open in the
 default browser, and if `offer` is set the offer line with **Show me** / **Do it** = `followup`
-guide / do); it closes on ×, after 30 s, or when a step or listening starts. The overlay has no Dock
+guide / do); it closes on ×, after 30 s, or when a step or listening starts. A `cursor` with
+`tentative: true` (a guess while the person is still talking) draws the cursor at 55% opacity with a
+soft pulse and an italic label; the next plain `cursor` makes it solid. `pulse` (speech start) draws
+one quick ring around the pink cursor wherever it is, idle follow included. `mic` (open mic during a
+task) shows a live pink dot on the mic button when `on` and a muted slashed icon when off; its
+optional `heard` text is one muted line at the bottom of the panel that fades after 6 s. The mic
+button keeps sending `{"type":"mic"}`. The overlay has no Dock
 icon and never takes focus. `Control+Alt+Space` (global hotkey, also the menu bar "Talk / Send")
 sends `{"type":"hotkey"}` and `Control+Alt+X` ("Stop / Cancel") sends `{"type":"stop"}` to the brain.
 It reconnects every second while the brain is down. Quit with `Ctrl+C` in the terminal.
@@ -37,10 +43,11 @@ npm run test-server 2560 1440   # optional: width height in screen points
 ```
 
 `test-server.js` listens on port 8765, logs everything the overlay sends (`hello`, `hotkey`, `next`,
-`mode`, `mic`, `stop`, `followup`), and loops: 3 s idle (the pink cursor follows the mouse), a question
-answered with an `answer` card (sources + offer), a listening session with a growing `transcript`, two
-task steps (`cursor` with a random position and label, `step` with a `why`, `plan`, a `chat` line), a
-second utterance mid-task, a `paused` step, the last three steps, then `clear`.
+`mode`, `mic`, `stop`, `followup`), and loops: 3 s idle (the pink cursor follows the mouse), a `pulse`,
+a question answered with an `answer` card (sources + offer), a listening session with a growing
+`transcript`, two task steps (`cursor` with a random position and label, `step` with a `why`, `plan`,
+a `chat` line) with the mic on, an open-mic utterance (`pulse`, two tentative cursor moves, a `heard`
+line), a `paused` step, mic off then on again with another utterance, the last steps, then `clear`.
 
 ## Files
 
