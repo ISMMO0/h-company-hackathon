@@ -691,7 +691,7 @@ class Agent:
             point = (nx / 1000 * w, ny / 1000 * h)
             self._last_point = point
             await self.to_overlay({"type": "cursor", "x": point[0], "y": point[1],
-                                   "label": short(f'Type "{args.get("text", "")}" here')})
+                                   "label": short(label_of("type", {"text": args.get("text", "")}) + " here")})
         if name == "scroll" and "x" in args and "y" in args:
             point = (args["x"] / 1000 * w, args["y"] / 1000 * h)
             self._last_point = point
@@ -1014,7 +1014,10 @@ def label_of(name: str, args: dict) -> str:
         return f"Drag {args.get('element', '')} onto {args.get('to_element', '')}".strip()
     if name == "type":
         where = f" in {args['element']}" if args.get("element") else ""
-        return f'Type "{args.get("text", "")}"{where}'
+        text = args.get("text", "")
+        enter = text.endswith("\n")
+        shown = text.rstrip("\n").replace("\t", " ⇥ ").replace("\n", " ⏎ ")
+        return f'Type "{shown}"{where}' + (" and press Return" if enter else "")
     if name == "press":
         return f"Press {args.get('keys', '')}"
     if name == "scroll":
