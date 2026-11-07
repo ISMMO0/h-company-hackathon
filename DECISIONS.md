@@ -104,3 +104,11 @@ Team lead: in Do it, the goal is to show and explain while doing, not to finish 
   Fast from the start only if asked, or if memory shows the person already did this kind of task.
 - Each sentence finishes before the next action is narrated (no more cut-off narration).
 - Spoken typing reads "Pizza, 10, =E2*B2" instead of Tab/Return characters.
+
+## Sun 00:30: scope and the pet cursor
+- No Stripe in the demo: what we have is enough. Demo and submission are Sunday's problem.
+- Deploy (later, on Vercel): when a juror clicks "Get your Shadow Cursor", it must work exactly as it
+  does on the team lead's Mac (see docs/deploy-plan.md).
+- The cursor gets a "pet" personality: it breathes when idle, hops (grows, then settles) on each new
+  spot, and spins while it thinks. Panel restyle: 4 options shown to the team lead (pill, speech
+  bubble, island, minimal), waiting for the pick.
