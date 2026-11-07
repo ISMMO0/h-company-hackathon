@@ -1,0 +1,13 @@
+{
+  "task": "make the title bold",
+  "app": "TextEdit",
+  "hint": "Select the text, then click the B button in the toolbar.",
+  "expect": {
+    "bbox": [
+      360,
+      270,
+      440,
+      330
+    ]
+  }
+}
