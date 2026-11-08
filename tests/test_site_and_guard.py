@@ -25,3 +25,12 @@ def test_do_it_never_wanders_or_destroys():
     assert risky("click", {"element": "Pages icon in the Dock"}, "make a shopping list")
     assert not risky("click", {"element": "Delete row button"}, "delete the second row")
     assert not risky("press", {"keys": "cmd+a"}, "anything")
+
+
+def test_system_settings_guard():
+    from brain.agent import system_blocked
+    assert not system_blocked("System Settings", "Light option in Appearance", "Appearance")
+    assert not system_blocked("System Settings", "Appearance in the sidebar", "Accessibility")
+    assert system_blocked("System Settings", "Shadow Cursor toggle", "Accessibility")
+    assert system_blocked("System Settings", "Privacy & Security in the sidebar", "Appearance")
+    assert system_blocked("SecurityAgent", "Allow button", "")

@@ -657,8 +657,9 @@ class Agent:
         """Show the step, then do it (DO) or watch the person (GUIDE). Returns (tool result, why)."""
         self._t_point = 0.0
         self._last_point = None
-        if self.mode == "do" and screen.frontmost_app() in screen.SYSTEM_APPS:
-            return await self.blocked(screen.frontmost_app()), "next"
+        front = screen.frontmost_app()
+        if self.mode == "do" and front in screen.SYSTEM_APPS and front not in SETTINGS_APPS:
+            return await self.blocked(front), "next"
 
         if self.mode == "do":
             refusal = risky(name, args, self.current_task)
@@ -719,7 +720,7 @@ class Agent:
             point = (nx / 1000 * w, ny / 1000 * h)
             self._last_point = point
             owner = screen.window_owner_at(*point)
-            if self.mode == "do" and owner in screen.SYSTEM_APPS:
+            if self.mode == "do" and system_blocked(owner, args.get("element", ""), screen.front_window()[1]):
                 return await self.blocked(owner), "next"
             if self.mode == "do" and owner in OWN_APPS:
                 await self.log(f"⛔ not acting in {owner}: it isn't the app of this task")
@@ -1044,6 +1045,28 @@ def label_of(name: str, args: dict) -> str:
 def short(label: str, n: int = 42) -> str:
     first = label.split(" - ")[0].split(", ")[0]
     return first if len(first) <= n else first[: n - 1] + "…"
+
+
+SETTINGS_APPS = {"System Settings", "System Preferences"}
+# System Settings pages and controls Do it never touches: permissions, passwords, accounts.
+SENSITIVE = ("privacy", "security", "accessibility", "password", "users", "login", "filevault", "touch id",
+             "full disk", "screen recording", "microphone", "camera", "sharing", "profile", "allow",
+             "passkey", "keychain", "lock screen")
+
+
+def system_blocked(owner: str, element: str, title: str) -> bool:
+    """Do it may change ordinary settings (Appearance, Display, Sound…) but never a security page or
+    a macOS permission / password prompt. On a sensitive page it may only leave it (sidebar, search)."""
+    if owner not in screen.SYSTEM_APPS:
+        return False
+    if owner not in SETTINGS_APPS:
+        return True
+    el = element.lower()
+    if any(w in el for w in SENSITIVE):
+        return True
+    if any(w in title.lower() for w in SENSITIVE):
+        return not any(w in el for w in ("sidebar", "search", "back"))
+    return False
 
 
 def risky(name: str, args: dict, task: str) -> str:
