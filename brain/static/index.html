@@ -46,11 +46,6 @@
   nav a:hover { background: var(--surface); color: var(--ink); }
   nav a.on { background: var(--accent-soft); color: var(--ink); font-weight: 560; }
   nav a.on i { color: var(--accent); }
-  .side-foot { margin-top: auto; display: grid; gap: 10px; padding: 0 10px; font-size: 13px; color: var(--muted); }
-  .conn { display: flex; align-items: center; gap: 8px; }
-  .conn b { width: 7px; height: 7px; border-radius: 50%; background: #c9c9cf; }
-  .conn.ok b { background: #22b573; }
-  .plan { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .link { border: 0; background: none; padding: 0; color: var(--ink); font-weight: 560; }
 
   main { min-width: 0; }
@@ -209,7 +204,7 @@
     body { grid-template-columns: 1fr; }
     aside { position: static; height: auto; flex-direction: row; align-items: center; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
     nav { display: flex; }
-    nav a span, .side-foot { display: none; }
+    nav a span { display: none; }
     .page { padding: 32px 16px 64px; }
   }
 </style>
@@ -225,10 +220,6 @@
     <a href="#history" data-view="history"><i class="ph ph-clock-counter-clockwise"></i><span>History</span></a>
     <a href="#console" data-view="console"><i class="ph ph-terminal-window"></i><span>Console</span></a>
   </nav>
-  <div class="side-foot">
-    <div class="conn" id="conn"><b></b><span>Connecting…</span></div>
-    <div class="plan"><span id="plan"></span><button class="link" id="upgrade" type="button">Upgrade</button></div>
-  </div>
 </aside>
 
 <main>
@@ -240,7 +231,7 @@
           <path d="M3 2 L3 19 L7.5 15 L10.5 21.5 L13.5 20.2 L10.5 13.8 L16.5 13.8 Z" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
         </svg>
       </div>
-      <h1>Your second cursor.<br><span class="h1-more">It shows you how — and does it for you if you want.</span></h1>
+      <h1>Your second cursor.<br><span class="h1-more">It shows you how, and does it for you if you want.</span></h1>
       <p class="sub">Press <kbd>⌃⌥Space</kbd> and ask. It guides you step by step, or does it while you watch.</p>
       <div class="actions">
         <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Shadow Cursor</span></button>
@@ -499,14 +490,10 @@
     setMode(b.dataset.m);
     ws && ws.send(JSON.stringify({ type: "mode", mode }));
   });
-  function online(ok) {
-    $("conn").classList.toggle("ok", ok);
-    $("conn").lastElementChild.textContent = ok ? "Brain online" : "Brain offline";
-  }
   function connect() {
     ws = new WebSocket(`${API ? "ws://127.0.0.1:8765" : `ws://${location.host}`}/ws/ui`);
-    ws.onopen = () => { online(true); $("status").textContent = "Idle"; };
-    ws.onclose = () => { online(false); setTimeout(connect, 1000); };
+    ws.onopen = () => { $("status").textContent = "Idle"; };
+    ws.onclose = () => setTimeout(connect, 1000);
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.type === "overlay") {
@@ -533,22 +520,6 @@
   };
   $("stop").onclick = () => ws.send(JSON.stringify({ type: "stop" }));
   $("next").onclick = () => ws.send(JSON.stringify({ type: "next" }));
-
-  // ---- billing ----
-  async function plan() {
-    try {
-      const b = await (await fetch(API + "/billing")).json();
-      $("plan").textContent = b.pro ? "Shadow Pro" : `${b.tasks_left} free tasks left today`;
-      $("upgrade").style.display = b.pro ? "none" : "inline";
-    } catch {}
-  }
-  plan();
-  window.addEventListener("focus", plan);
-  $("upgrade").onclick = async () => {
-    const tab = window.open("", "_blank");
-    const r = await (await fetch(API + "/billing/checkout", { method: "POST" })).json();
-    if (r.url) tab.location = r.url; else { tab.close(); $("status").textContent = r.error; }
-  };
 
   show();
 </script>
