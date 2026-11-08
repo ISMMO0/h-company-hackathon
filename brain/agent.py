@@ -554,6 +554,8 @@ class Agent:
                     told = True  # never look frozen: say we're still on it
                     await self.panel("Still looking at your screen…", "thinking")
                 stale = self.events and "spoke" or changed_since(mark, self.task_apps)
+                if stale in ("click", "key") and self.mode == "do":
+                    stale = None  # Do it: a stray click while it thinks must not restart the plan
                 moving = (not stale and base_thumb is not None and not job.done()
                           and screen.changed(base_thumb, await asyncio.to_thread(screen.thumb)))
                 if moving:
