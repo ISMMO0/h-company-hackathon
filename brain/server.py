@@ -23,7 +23,7 @@ STATIC = Path(__file__).parent / "static"
 BASE_URL = "http://127.0.0.1:8765"
 PACKAGED = os.environ.get("SHADOW_APP") == "1"  # started by Shadow Cursor.app, which is the overlay
 # The website (Vercel) may drive this local brain; no other site can (it runs tasks on this Mac).
-SITE = re.compile(os.environ.get("SHADOW_SITE", r"https://shadow-cursor[a-z0-9-]*\.vercel\.app"))
+SITE = re.compile(os.environ.get("SHADOW_SITE", r"https://01a1ba29-1725-7969-bc8e-a4b8b4e2de94-8080\.eur-1\.aiven\.app"))
 overlays: set[web.WebSocketResponse] = set()
 uis: set[web.WebSocketResponse] = set()
 

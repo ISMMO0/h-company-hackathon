@@ -1,7 +1,6 @@
 #!/bin/bash
-# Build Shadow Cursor.dmg for the jury: frozen brain + Electron overlay + the keys from .env.
+# Build Shadow Cursor.dmg for the jury: frozen brain + Electron overlay, pointed at our cloud.
 #   scripts/build-mac.sh   →  build/Shadow Cursor.dmg  (Apple Silicon, ad-hoc signed)
-# The keys ship inside the app: rotate them after the hackathon.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 B=build
@@ -13,8 +12,9 @@ $B/venv312/bin/pyinstaller --noconfirm --log-level WARN --onedir --name shadow-b
   --distpath $B --workpath $B/pyi --specpath $B/pyi \
   --add-data "$PWD/brain/static:brain/static" --collect-submodules brain --paths "$PWD" brain/app.py
 
-# 2. Only the keys the app needs (no database or Stripe secrets), and the per-site lessons
-grep -E '^(HAI_API_KEY|OPENAI_API_KEY|GLADIA_API_KEY|LINKUP_API_KEY|HOLO_[A-Z_]+|OPENAI_MODEL|SHADOW_VOICE|SHADOW_FREE_TASKS)=' .env > $B/app.env
+# 2. No API keys in the app: it calls our cloud (server/proxy.py on Aiven), which holds them
+CLOUD=https://01a1ba29-1725-7969-bc8e-a4b8b4e2de94-8080.eur-1.aiven.app
+printf 'SHADOW_API=%s/api\nSHADOW_SITE=%s\nSHADOW_FREE_TASKS=1000\n' "$CLOUD" "${CLOUD//./\\.}" > $B/app.env
 rm -rf $B/knowledge && cp -R data/knowledge $B/knowledge
 
 # 3. Electron app, ad-hoc signed (unsigned apps show "damaged" on recent macOS)
