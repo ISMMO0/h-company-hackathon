@@ -6,12 +6,59 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test-server": "node test-server.js"
+    "test-server": "node test-server.js",
+    "dist": "electron-builder --mac dir --arm64"
   },
   "dependencies": {
     "ws": "8.21.3"
   },
   "devDependencies": {
-    "electron": "44.10.2"
+    "electron": "44.10.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ai.shadowcursor.app",
+    "productName": "Shadow Cursor",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "tray.png",
+      "tray@2x.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/shadow-brain",
+        "to": "shadow-brain"
+      },
+      {
+        "from": "../build/app.env",
+        "to": "app.env"
+      },
+      {
+        "from": "../build/knowledge",
+        "to": "knowledge"
+      }
+    ],
+    "directories": {
+      "output": "../build/app"
+    },
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSMicrophoneUsageDescription": "Shadow Cursor listens when you press Control-Option-Space and say what you want to do.",
+        "NSAppleEventsUsageDescription": "Shadow Cursor guides you through your apps."
+      },
+      "protocols": [
+        {
+          "name": "Shadow Cursor",
+          "schemes": [
+            "shadowcursor"
+          ]
+        }
+      ]
+    }
   }
 }

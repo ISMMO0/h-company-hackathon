@@ -1,5 +1,7 @@
-const { app, BrowserWindow, globalShortcut, Menu, Tray, screen, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, Tray, screen, shell, ipcMain, systemPreferences, desktopCapturer } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
 const WebSocket = require('ws');
 
 const BRAIN_URL = 'ws://127.0.0.1:8765/ws/overlay';
@@ -236,6 +238,9 @@ function handleMessage(msg) {
     case 'answer':
       showAnswer(msg);
       break;
+    case 'quit': // "Turn off" on the website (packaged app)
+      app.quit();
+      break;
     case 'theme': // cursor + panel accent color picked on the control page
     case 'pulse': // only the display showing the pink cursor draws anything
     case 'mic':
@@ -292,8 +297,51 @@ function buildTray() {
   tray.setContextMenu(menu);
 }
 
+// Packaged app (Shadow Cursor.app): it starts the bundled brain itself, with the keys from
+// Resources/app.env and its data in ~/Library/Application Support/Shadow Cursor.
+let brain = null;
+
+function readEnv(file) {
+  const env = {};
+  if (!fs.existsSync(file)) return env;
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m) env[m[1]] = m[2].trim().replace(/^"|"$/g, '');
+  }
+  return env;
+}
+
+function startBrain() {
+  const res = process.resourcesPath;
+  const home = app.getPath('userData');
+  const knowledge = path.join(home, 'data', 'knowledge');
+  if (!fs.existsSync(knowledge)) fs.cpSync(path.join(res, 'knowledge'), knowledge, { recursive: true });
+  brain = spawn(path.join(res, 'shadow-brain', 'shadow-brain'), [], {
+    cwd: home,
+    env: { ...process.env, ...readEnv(path.join(res, 'app.env')), SHADOW_APP: '1' },
+    stdio: ['ignore', fs.openSync(path.join(home, 'brain.log'), 'a'), fs.openSync(path.join(home, 'brain.log'), 'a')],
+  });
+}
+
+// First launch: the three macOS permissions, asked one after the other.
+async function askPermissions() {
+  systemPreferences.isTrustedAccessibilityClient(true); // Accessibility: move the mouse, click, type
+  await systemPreferences.askForMediaAccess('microphone'); // "Hey, show me how…"
+  if (systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+    desktopCapturer.getSources({ types: ['screen'] }).catch(() => {}); // Screen Recording: see the screen
+  }
+}
+
+if (app.isPackaged && !app.requestSingleInstanceLock()) app.quit();
+app.setAsDefaultProtocolClient('shadowcursor'); // the website's button opens shadowcursor://start
+app.on('open-url', (event) => event.preventDefault());
+
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
+  if (app.isPackaged) {
+    startBrain();
+    askPermissions();
+  }
   buildTray();
   rebuildWindows();
   startFollow(false);
@@ -309,6 +357,9 @@ app.whenReady().then(() => {
   }
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (brain) brain.kill();
+});
 
 app.on('window-all-closed', () => {});

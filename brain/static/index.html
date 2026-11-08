@@ -109,6 +109,20 @@
   .actions .cta { margin-top: 0; }
   .color-btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 18px; font-size: 15px; font-weight: 560; }
 
+  /* Install pop-up (website, first time) */
+  .install {
+    width: min(480px, 92vw); padding: 20px; border-radius: var(--radius); border: 1px solid var(--line);
+    box-shadow: 0 24px 60px -24px rgba(23, 23, 26, .25); color: var(--ink); text-align: left;
+  }
+  .install::backdrop { background: rgba(23, 23, 26, .25); }
+  .install ol { margin: 16px 0; padding-left: 22px; display: grid; gap: 12px; color: var(--ink-2); }
+  .install li::marker { color: var(--accent); font-weight: 650; }
+  .install .cta { text-decoration: none; margin: 0; }
+  .install .wait { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--ink-2); }
+  .install .wait i { animation: spin 1s linear infinite; color: var(--accent); }
+  .install .note { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   /* Customizer */
   .custom {
     width: min(460px, 92vw); padding: 18px; border-radius: var(--radius); background: var(--bg);
@@ -242,6 +256,20 @@
     </div>
   </section>
 
+  <dialog class="install" id="install" aria-labelledby="install-title">
+    <div class="custom-head"><span id="install-title">Install Shadow Cursor (one time)</span>
+      <button class="icon-btn" id="install-close" type="button" aria-label="Close"><i class="ph ph-x"></i></button>
+    </div>
+    <ol>
+      <li><a class="cta" id="dmg" download><i class="ph ph-download-simple"></i>Download for Mac</a></li>
+      <li>Open it and drag <b>Shadow Cursor</b> to <b>Applications</b>.</li>
+      <li>Open Shadow Cursor. If macOS blocks it, go to <b>System Settings › Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
+      <li>Allow <b>Microphone</b>, <b>Accessibility</b> and <b>Screen Recording</b> when macOS asks, then quit Shadow Cursor from the pink icon in the menu bar and open it again.</li>
+    </ol>
+    <p class="wait"><i class="ph ph-circle-notch"></i>This page continues by itself once Shadow Cursor is open.</p>
+    <p class="note">Mac with Apple chip · Chrome recommended</p>
+  </dialog>
+
   <section class="view" id="view-history">
     <div class="page">
       <h2>History</h2>
@@ -276,6 +304,10 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+  // Served by the brain (127.0.0.1:8765) or by the website, which talks to the app on this Mac.
+  const API = location.port === "8765" ? "" : "http://127.0.0.1:8765";
+  const DMG_URL = "Shadow-Cursor.dmg";
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const COLORS = [
     ["Pink", "#ff3ea5"], ["Coral", "#ff6b4a"], ["Amber", "#f5a400"], ["Emerald", "#10b981"],
     ["Blue", "#2f6bff"], ["Violet", "#7c5cff"], ["Graphite", "#2b2b30"],
@@ -302,7 +334,7 @@
   }
   async function saveColor(c) {
     applyColor(c);
-    try { await fetch("/theme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ color: c }) }); } catch {}
+    try { await fetch(API + "/theme", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ color: c }) }); } catch {}
   }
   $("swatches").innerHTML = COLORS.map(([n, c]) =>
     `<button class="sw" type="button" data-c="${c}" style="--c:${c}" title="${n}" aria-label="${n}"></button>`).join("") +
@@ -353,22 +385,47 @@
     if ($("get").classList.contains("is-on")) return;
     $("get-label").textContent = "Starting…";
     if (!calm()) big.classList.add("charging");
+    if (!(await appReady(API ? 4000 : 0))) {
+      big.classList.remove("charging");
+      $("get-label").textContent = "Get your Shadow Cursor";
+      $("install").showModal();
+      if (!(await appReady(15 * 60000))) return;  // continues by itself once the app is open
+      $("install").close();
+      $("get-label").textContent = "Starting…";
+    }
     try {
-      const r = await (await fetch("/overlay/start", { method: "POST" })).json();
+      const r = await (await fetch(API + "/overlay/start", { method: "POST" })).json();
       if (r.running) await flyAway();
       big.classList.remove("charging");
       cursorOn(r.running);
     } catch { big.classList.remove("charging"); cursorOn(false); }
   };
+  async function ping() {
+    try { return await (await fetch(API + "/ping")).json(); } catch { return null; }
+  }
+  // The app is running with its pink cursor; on the website, first try to open it (shadowcursor://).
+  async function appReady(wait) {
+    if ((await ping())?.overlay) return true;
+    if (!API) return true;  // local page: the brain starts the overlay itself
+    if (!opened) { opened = true; location.href = "shadowcursor://start"; }
+    for (const end = Date.now() + wait; Date.now() < end; await sleep(800)) {
+      if ((await ping())?.overlay) return true;
+    }
+    return false;
+  }
+  let opened = false;
+  $("install-close").onclick = () => $("install").close();
+  $("dmg").href = DMG_URL;
   $("off").onclick = async () => {
     $("off").disabled = true;
-    try { await fetch("/overlay/stop", { method: "POST" }); } catch {}
+    try { await fetch(API + "/overlay/stop", { method: "POST" }); } catch {}
+    opened = false;
     $("off").disabled = false;
     cursorOn(false);
   };
   $("color").onclick = () => $("custom").classList.toggle("on");
   $("close").onclick = () => $("custom").classList.remove("on");
-  fetch("/theme").then((r) => r.json()).then((t) => applyColor(t.color)).catch(() => applyColor("#ff3ea5"));
+  fetch(API + "/theme").then((r) => r.json()).then((t) => applyColor(t.color)).catch(() => applyColor("#ff3ea5"));
 
   // the big cursor leans toward your mouse: it follows you
   const big = $("big");
@@ -396,7 +453,7 @@
     const box = $("history");
     box.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
     let items;
-    try { items = (await (await fetch("/history")).json()).items; }
+    try { items = (await (await fetch(API + "/history")).json()).items; }
     catch { box.innerHTML = '<div class="empty">Could not load your history. Is the brain running?</div>'; return; }
     if (!items.length) {
       box.innerHTML = '<div class="empty">Nothing yet. Press <kbd>⌃⌥Space</kbd> and ask for something: it will show up here.</div>';
@@ -446,7 +503,7 @@
     $("conn").lastElementChild.textContent = ok ? "Brain online" : "Brain offline";
   }
   function connect() {
-    ws = new WebSocket(`ws://${location.host}/ws/ui`);
+    ws = new WebSocket(`${API ? "ws://127.0.0.1:8765" : `ws://${location.host}`}/ws/ui`);
     ws.onopen = () => { online(true); $("status").textContent = "Idle"; };
     ws.onclose = () => { online(false); setTimeout(connect, 1000); };
     ws.onmessage = (e) => {
@@ -479,7 +536,7 @@
   // ---- billing ----
   async function plan() {
     try {
-      const b = await (await fetch("/billing")).json();
+      const b = await (await fetch(API + "/billing")).json();
       $("plan").textContent = b.pro ? "Shadow Pro" : `${b.tasks_left} free tasks left today`;
       $("upgrade").style.display = b.pro ? "none" : "inline";
     } catch {}
@@ -488,7 +545,7 @@
   window.addEventListener("focus", plan);
   $("upgrade").onclick = async () => {
     const tab = window.open("", "_blank");
-    const r = await (await fetch("/billing/checkout", { method: "POST" })).json();
+    const r = await (await fetch(API + "/billing/checkout", { method: "POST" })).json();
     if (r.url) tab.location = r.url; else { tab.close(); $("status").textContent = r.error; }
   };
 

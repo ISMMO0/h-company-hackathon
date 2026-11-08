@@ -39,6 +39,8 @@ except ImportError:  # memory.py lands with Devin's PR; keep the agent usable wi
 MAX_ACTIONS = 30  # real actions shown/done; re-plans don't count
 MAX_TURNS = 200   # hard safety stop
 SAVE_FIXTURES = os.environ.get("SHADOW_SAVE_FIXTURES") == "1"
+# The voice runs in its own process; in the packaged app the brain binary takes a `tts` argument.
+TTS = [sys.executable, "tts"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "brain.tts"]
 FIXTURES = Path("data/fixtures")
 
 
@@ -101,11 +103,11 @@ class Agent:
     def speak(self, text: str, whole: bool = False) -> None:
         self.hush()
         # OpenAI 'sage' voice (brain/tts.py), falls back to the Mac voice on its own.
-        self.say_proc = subprocess.Popen([sys.executable, "-m", "brain.tts", self.said(text, whole)])
+        self.say_proc = subprocess.Popen([*TTS, self.said(text, whole)])
 
     def prefetch_voice(self, text: str, whole: bool = False) -> None:
         """Generate the next sentence's audio while the current one still plays (~1.5 s saved)."""
-        subprocess.Popen([sys.executable, "-m", "brain.tts", "--prefetch", self.said(text, whole)],
+        subprocess.Popen([*TTS, "--prefetch", self.said(text, whole)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     async def finish_speaking(self, cap: float = 8.0) -> None:

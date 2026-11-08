@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -20,6 +21,9 @@ from brain.agent import Agent
 
 STATIC = Path(__file__).parent / "static"
 BASE_URL = "http://127.0.0.1:8765"
+PACKAGED = os.environ.get("SHADOW_APP") == "1"  # started by Shadow Cursor.app, which is the overlay
+# The website (Vercel) may drive this local brain; no other site can (it runs tasks on this Mac).
+SITE = re.compile(os.environ.get("SHADOW_SITE", r"https://shadow-cursor[a-z0-9-]*\.vercel\.app"))
 overlays: set[web.WebSocketResponse] = set()
 uis: set[web.WebSocketResponse] = set()
 
@@ -34,6 +38,27 @@ async def _send(targets: set, msg: dict) -> None:
 
 agent = Agent(to_overlay=lambda m: _send(overlays, m), to_ui=lambda m: _send(uis, m))
 agent.overlay_connected = lambda: bool(overlays)
+
+
+def allowed(origin: str | None) -> bool:
+    return not origin or origin == BASE_URL or bool(SITE.fullmatch(origin))
+
+
+@web.middleware
+async def cors(req: web.Request, handler):
+    origin = req.headers.get("Origin")
+    if not allowed(origin):
+        return web.json_response({"error": "origin not allowed"}, status=403)
+    resp = web.Response() if req.method == "OPTIONS" else await handler(req)
+    if origin and origin != BASE_URL:
+        resp.headers.update({"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET, POST",
+                             "Access-Control-Allow-Headers": "Content-Type",
+                             "Access-Control-Allow-Private-Network": "true"})
+    return resp
+
+
+async def ping(_req: web.Request) -> web.Response:
+    return web.json_response({"ok": True, "overlay": bool(overlays)})
 
 
 async def index(_req: web.Request) -> web.FileResponse:
@@ -138,7 +163,10 @@ async def theme_set(req: web.Request) -> web.Response:
 async def overlay_start(_req: web.Request) -> web.Response:
     """'Get your Shadow Cursor': start the pink cursor (Electron overlay) if it isn't running."""
     if overlays:
+        await _send(overlays, {"type": "pulse"})
         return web.json_response({"running": True, "started": False})
+    if PACKAGED:
+        return web.json_response({"running": False, "started": False})
     npm = shutil.which("npm") or "/opt/homebrew/bin/npm"
     await asyncio.create_subprocess_exec(npm, "start", cwd=Path(__file__).parent.parent / "overlay",
                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -154,6 +182,9 @@ async def overlay_start(_req: web.Request) -> web.Response:
 
 async def overlay_stop(_req: web.Request) -> web.Response:
     """'Turn off': close the pink cursor (the brain keeps running for this page)."""
+    if PACKAGED:  # the app is the overlay: it quits and takes the brain with it
+        await _send(overlays, {"type": "quit"})
+        return web.json_response({"running": False})
     proc = await asyncio.create_subprocess_exec("pkill", "-f", "overlay/node_modules/electron")
     await proc.wait()
     for _ in range(20):
@@ -164,13 +195,14 @@ async def overlay_stop(_req: web.Request) -> web.Response:
 
 
 def main() -> None:
-    app = web.Application()
+    app = web.Application(middlewares=[cors])
     app.add_routes([web.get("/", index), web.get("/ws/overlay", overlay_ws), web.get("/ws/ui", ui_ws),
                     web.get("/billing", billing_status), web.post("/billing/checkout", billing_checkout),
                     web.get("/billing/success", billing_success), web.get("/history", history_list),
                     web.get("/theme", theme_get), web.post("/theme", theme_set),
-                    web.post("/overlay/start", overlay_start), web.post("/overlay/stop", overlay_stop)])
-    web.run_app(app, host="127.0.0.1", port=8765, print=lambda *_: print("Shadow Cursor → http://127.0.0.1:8765"))
+                    web.post("/overlay/start", overlay_start), web.post("/overlay/stop", overlay_stop),
+                    web.get("/ping", ping), web.options("/{tail:.*}", ping)])
+    web.run_app(app, host="127.0.0.1", port=int(os.environ.get("SHADOW_PORT", "8765")), print=lambda *_: print("Shadow Cursor → http://127.0.0.1:8765"))
 
 
 if __name__ == "__main__":

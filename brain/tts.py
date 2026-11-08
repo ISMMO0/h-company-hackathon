@@ -15,14 +15,14 @@ from pathlib import Path
 VOICE = os.environ.get("SHADOW_VOICE", "sage")
 MODEL = "gpt-4o-mini-tts"
 STYLE = "Friendly, calm tutor showing someone how to use an app. Natural, slightly brisk pace."
-CACHE = Path(__file__).resolve().parent.parent / "data" / "tts-cache"
+CACHE = Path("data") / "tts-cache"  # relative to the working dir: the repo, or the app's data folder
 
 
 def _key() -> str:
     key = os.environ.get("OPENAI_API_KEY", "")
     if key:
         return key
-    env = Path(__file__).resolve().parent.parent / ".env"
+    env = Path(".env")
     for line in env.read_text().splitlines() if env.exists() else []:
         if line.startswith("OPENAI_API_KEY="):
             return line.split("=", 1)[1].strip().strip('"')
@@ -65,8 +65,12 @@ def prefetch(text: str) -> None:
         pass
 
 
-if __name__ == "__main__":
-    if sys.argv[1] == "--prefetch":
-        prefetch(sys.argv[2])
+def cli(args: list[str]) -> None:
+    if args[0] == "--prefetch":
+        prefetch(args[1])
     else:
-        main(sys.argv[1])
+        main(args[0])
+
+
+if __name__ == "__main__":
+    cli(sys.argv[1:])

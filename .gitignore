@@ -25,3 +25,6 @@ bench/fixtures/*/
 !bench/fixtures/example/
 voice-samples/
 data/tts-cache/
+
+# Mac app build (scripts/build-mac.sh)
+build/
