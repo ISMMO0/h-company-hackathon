@@ -201,17 +201,17 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
 
 
 POINT_TIMEOUT = 5.0
-HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "3.0"))
-_pool = cf.ThreadPoolExecutor(max_workers=6)
+HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "2.5"))
+_pool = cf.ThreadPoolExecutor(max_workers=10)
 
 
 def _create_hedged(messages: list, tools: list):
     """The planning call, hedged: if the normal call (thinking 'low') isn't back after
-    HEDGE_AFTER s, fire a fast one (no thinking) in parallel, and a second fast one after
-    another HEDGE_AFTER s; take whichever answers first. Holo sometimes hangs on one request;
-    this keeps steps around 1-4 s and a stuck call never costs more than ~8 s."""
+    HEDGE_AFTER s, fire a fast one (no thinking) in parallel, then another every HEDGE_AFTER s
+    (4 in flight at most); take whichever answers first. Under load H answers in ~1 s or hangs
+    for good, so more parallel requests beat a longer wait: steps stay around 1-5 s."""
     calls = [_pool.submit(_create, messages, tools)]
-    for _ in range(2):
+    for _ in range(3):
         done, _ = cf.wait(calls, timeout=HEDGE_AFTER, return_when=cf.FIRST_COMPLETED)
         for f in done:
             if f.exception() is None:

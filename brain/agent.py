@@ -220,7 +220,10 @@ class Agent:
         g["busy"], g["words"] = True, words
         try:
             target = f"the on-screen UI element the person needs for this request: {text}"
-            p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
+            try:
+                p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
+            except planner.SlowPoint:  # only a preview: skip it when H is slow
+                return
             if p and self.listener and not self.busy():  # still talking, no real step yet: show only
                 w, h = screen.screen_size()
                 await self.to_overlay({"type": "cursor", "x": p[0] / 1000 * w, "y": p[1] / 1000 * h,
