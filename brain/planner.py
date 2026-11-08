@@ -13,7 +13,7 @@ import json
 import os
 import time
 
-from openai import APITimeoutError, OpenAI
+from openai import APIStatusError, APITimeoutError, OpenAI
 from PIL import Image
 
 from brain import cloud
@@ -202,7 +202,7 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
 
 POINT_TIMEOUT = 5.0
 HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "2.5"))
-_pool = cf.ThreadPoolExecutor(max_workers=16)
+_pool = cf.ThreadPoolExecutor(max_workers=24)
 
 
 def _create_hedged(messages: list, tools: list):
@@ -211,19 +211,25 @@ def _create_hedged(messages: list, tools: list):
     (4 in flight at most); take whichever answers first. Under load H answers in ~1 s or hangs
     for good, so more parallel requests beat a longer wait: steps stay around 1-5 s."""
     calls = [_pool.submit(_create, messages, tools)]
-    for _ in range(3):
-        done, _ = cf.wait(calls, timeout=HEDGE_AFTER, return_when=cf.FIRST_COMPLETED)
-        for f in done:
+    try:
+        for _ in range(3):
+            done, _ = cf.wait(calls, timeout=HEDGE_AFTER, return_when=cf.FIRST_COMPLETED)
+            for f in done:
+                if f.exception() is None:
+                    return f.result()
+                if isinstance(f.exception(), APIStatusError):  # H refused (429/5xx): don't pile on
+                    raise f.exception()
+            calls = [f for f in calls if f not in done]  # drop the ones that failed fast
+            calls.append(_pool.submit(_create, messages, tools, effort="none"))
+        error = None
+        for f in cf.as_completed(calls):
             if f.exception() is None:
                 return f.result()
-        calls = [f for f in calls if f not in done]  # drop the ones that failed fast
-        calls.append(_pool.submit(_create, messages, tools, effort="none"))
-    error = None
-    for f in cf.as_completed(calls):
-        if f.exception() is None:
-            return f.result()
-        error = f.exception()
-    raise error
+            error = f.exception()
+        raise error
+    finally:
+        for f in calls:
+            f.cancel()  # backups still queued behind hung requests never start
 
 
 def _create(messages: list, tools: list | None = None, effort: str | None = None, **kw):

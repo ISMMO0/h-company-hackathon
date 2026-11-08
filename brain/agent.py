@@ -523,6 +523,7 @@ class Agent:
         last_key, repeats, pixels_ok = None, 0, True
         last_step = 0
         actions = 0
+        h_errors = 0  # H failures in a row, for the retry back-off
         pixel_stales = 0  # at most one "screen still changing" re-plan per step (videos animate)
         same_step, last_scroll, prev_thumb = 0, "", None
 
@@ -567,10 +568,12 @@ class Agent:
             try:
                 action = job.result()
             except Exception as e:  # noqa: BLE001 - Holo timeout or API error: try again, say so
+                h_errors += 1
                 await self.log(f"Holo error ({type(e).__name__}), retrying")
                 await self.panel("H is slow right now, retrying…", "thinking")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(min(0.5 * 2 ** (h_errors - 1), 4))  # back off: 0.5, 1, 2, 4 s
                 continue
+            h_errors = 0
             pl.accept(action)
             name, args = action["name"], action["args"]
             t_plan = action["timings"]["plan"]
@@ -723,7 +726,10 @@ class Agent:
             point = (nx / 1000 * w, ny / 1000 * h)
             self._last_point = point
             owner = screen.window_owner_at(*point)
-            if self.mode == "do" and system_blocked(owner, args.get("element", ""), screen.front_window()[1]):
+            front_app, front_title = screen.front_window()
+            # the sensitive-page check needs that window's title; unknown → only sidebar / search
+            title = front_title if front_app == owner else "privacy"
+            if self.mode == "do" and system_blocked(owner, args.get("element", ""), title):
                 return await self.blocked(owner), "next"
             if self.mode == "do" and owner in OWN_APPS:
                 await self.log(f"⛔ not acting in {owner}: it isn't the app of this task")
@@ -1093,7 +1099,7 @@ def risky(name: str, args: dict, task: str) -> str:
 
 def launcher(owner: str, task: str) -> bool:
     """Spotlight and the Dock are how Do it opens the app a task asks for ("open System Settings…")."""
-    return owner in ("Spotlight", "Dock") and bool(re.search(r"\b(open|launch|start|go to|switch)\b", task.lower()))
+    return owner in ("Spotlight", "Dock") and bool(re.search(r"\b(open|launch|go to|switch to)\b", task.lower()))
 
 
 OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Electron: that's our overlay
