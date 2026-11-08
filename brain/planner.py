@@ -205,7 +205,7 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
 
 POINT_TIMEOUT = 2.5
 POINT_HEDGE = 1.0  # a second pointing request if the first isn't back (it's ~0.4 s when H is well)
-HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "1.5"))
+HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "3.0"))
 _pool = cf.ThreadPoolExecutor(max_workers=24)
 
 
@@ -216,7 +216,7 @@ def _create_hedged(messages: list, tools: list):
     for good, so more parallel requests beat a longer wait: steps stay around 1-5 s."""
     calls = [_pool.submit(_create, messages, tools)]
     try:
-        for _ in range(3):
+        for _ in range(1):  # one backup only: more parallel requests get rate-limited by H
             done, _ = cf.wait(calls, timeout=HEDGE_AFTER, return_when=cf.FIRST_COMPLETED)
             for f in done:
                 if f.exception() is None:
