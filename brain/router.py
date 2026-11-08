@@ -60,7 +60,7 @@ def _ask(system: str, user: str) -> dict:
 
 # --- routing ----------------------------------------------------------------------------------
 
-ROUTE_PROMPT = """You route what a person says to Shadow Cursor, a voice assistant with a pink cursor that
+ROUTE_PROMPT = """You route what a person says to Twin Cursor, a voice assistant with a pink cursor that
 helps them use apps on their Mac. Reply with JSON: {"intent": ..., "task": ..., "reply": ...}.
 
 If NO task is running, intent is one of:
@@ -114,6 +114,8 @@ def route(text: str, busy: bool, task: str = "", app: str = "", brief: str = "",
                 ctx += f"\nSession so far:\n{brief}"
             out = _ask(ROUTE_PROMPT, f"{ctx}\nThe person said: {text!r}")
             allowed = BUSY_INTENTS if busy else IDLE_INTENTS
+            if out.get("intent") == "resume" and not any(w in text.lower() for w in RESUME_WORDS):
+                return route_keywords(text, busy)  # a new request, not "continue": never resume the old task
             if out.get("intent") in allowed:
                 return {"intent": out["intent"], "task": out.get("task") or text,
                         "reply": out.get("reply") or ""}

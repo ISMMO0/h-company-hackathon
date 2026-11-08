@@ -39,7 +39,7 @@ SESSION_CONFIG = {
                 {"value": "Claude", "pronunciations": ["cloud", "clod", "clode"]},
                 {"value": "Rekordbox", "pronunciations": ["record box", "recordbox", "record books"]},
                 {"value": "Devin", "pronunciations": ["Kevin", "devine"]},
-                {"value": "Shadow Cursor", "pronunciations": ["shadow curser", "shadow closer"]},
+                {"value": "Twin Cursor", "pronunciations": ["twin curser", "twin closer"]},
                 {"value": "Linkup", "pronunciations": ["link up"]},
                 {"value": "Stripe"}, {"value": "Figma"}, {"value": "Notion"}, {"value": "Codex"},
                 {"value": "YouTube"}, {"value": "Google Docs"}, {"value": "hot cue", "pronunciations": ["hot queue", "hot Q"]},

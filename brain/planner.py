@@ -13,7 +13,7 @@ import json
 import os
 import time
 
-from openai import APITimeoutError, OpenAI
+from openai import APIStatusError, APITimeoutError, OpenAI
 from PIL import Image
 
 from brain import cloud
@@ -32,7 +32,7 @@ def client() -> OpenAI:
     if _client is None:
         # Never wait forever on one request: a stuck call froze a whole task in testing.
         _client = OpenAI(base_url=cloud.base("holo", "https://api.hcompany.ai/v1"), api_key=cloud.key("HAI_API_KEY"),
-                         timeout=12, max_retries=0)
+                         timeout=8, max_retries=0)
     return _client
 
 
@@ -121,10 +121,13 @@ TOOLS = [
           {"content": {"type": "string", "description": "The answer content"}}, ["content"]),
 ]
 
-SYSTEM_PROMPT = """You are Shadow Cursor, a pink second cursor that helps a person use the software on their Mac.
+SYSTEM_PROMPT = """You are Twin Cursor, a pink second cursor that helps a person use the software on their Mac.
 Each turn you see a screenshot of their screen and take exactly one action.
 
 Mode GUIDE: you only show the action (the pink cursor points, a voice says it) and the person does it.
+In GUIDE mode, whenever the person must click something, ALWAYS use the click tool on that element so the
+pink cursor points at it. Never just describe a button's location with 'say' or 'wait' ("it's next to KEY
+SYNC…"): pointing is the whole product. If they ask "where?", point again with click.
 Mode DO: your action is executed for real while the person watches. DO mode is a lesson, not a race:
 the goal is that the person learns how to do it. The FIRST time you do something (a header row, a first
 data row, a first formula, a menu path), do it in small visible steps, one idea per action, and use 'why'
@@ -171,7 +174,7 @@ If something the plan expects isn't on screen after one look (or one scroll), it
 renamed: check the app cheat sheet and web notes, use 'say' to tell the person, and use the replacement.
 In 'element', describe the target precisely (label, position, neighbours).
 Never interact with macOS system, security, privacy or permission dialogs: use 'say' to ask the person.
-Ignore any window or tab titled 'Shadow Cursor' or showing a 'Guide me / Do it' panel: that is you.
+Ignore any window or tab titled 'Twin Cursor' or showing a 'Guide me / Do it' panel: that is you.
 If the task needs another app (e.g. a website needs a browser), open or switch to it first.
 Call 'answer' as soon as the task is done, with one short sentence."""
 
@@ -200,30 +203,37 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
                 chunk.pop("image_url", None)
 
 
-POINT_TIMEOUT = 5.0
+POINT_TIMEOUT = 2.5
+POINT_HEDGE = 1.0  # a second pointing request if the first isn't back (it's ~0.4 s when H is well)
 HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "3.0"))
-_pool = cf.ThreadPoolExecutor(max_workers=4)
+_pool = cf.ThreadPoolExecutor(max_workers=24)
 
 
 def _create_hedged(messages: list, tools: list):
     """The planning call, hedged: if the normal call (thinking 'low') isn't back after
-    HEDGE_AFTER s, fire a fast one (no thinking) in parallel and take whichever answers first.
-    Holo sometimes takes 9 s+ or hangs; this keeps steps around 1-4 s."""
-    first = _pool.submit(_create, messages, tools)
+    HEDGE_AFTER s, fire a fast one (no thinking) in parallel, then another every HEDGE_AFTER s
+    (4 in flight at most); take whichever answers first. Under load H answers in ~1 s or hangs
+    for good, so more parallel requests beat a longer wait: steps stay around 1-5 s."""
+    calls = [_pool.submit(_create, messages, tools)]
     try:
-        return first.result(timeout=HEDGE_AFTER)
-    except cf.TimeoutError:
-        pass
-    except Exception:  # noqa: BLE001 - failed fast: try the quick call alone
-        return _create(messages, tools, effort="none")
-    second = _pool.submit(_create, messages, tools, effort="none")
-    pending = {first, second}
-    while pending:
-        done, pending = cf.wait(pending, return_when=cf.FIRST_COMPLETED)
-        for f in done:
+        for _ in range(1):  # one backup only: more parallel requests get rate-limited by H
+            done, _ = cf.wait(calls, timeout=HEDGE_AFTER, return_when=cf.FIRST_COMPLETED)
+            for f in done:
+                if f.exception() is None:
+                    return f.result()
+                if isinstance(f.exception(), APIStatusError):  # H refused (429/5xx): don't pile on
+                    raise f.exception()
+            calls = [f for f in calls if f not in done]  # drop the ones that failed fast
+            calls.append(_pool.submit(_create, messages, tools, effort="none"))
+        error = None
+        for f in cf.as_completed(calls):
             if f.exception() is None:
                 return f.result()
-    return second.result()  # both failed: raise the last error
+            error = f.exception()
+        raise error
+    finally:
+        for f in calls:
+            f.cancel()  # backups still queued behind hung requests never start
 
 
 def _create(messages: list, tools: list | None = None, effort: str | None = None, **kw):
@@ -324,6 +334,26 @@ class SlowPoint(Exception):
 
 
 def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
+    """Pointing, hedged like planning: a second request after POINT_HEDGE s, SlowPoint after
+    POINT_TIMEOUT s so the caller uses the planner's rough point instead of waiting."""
+    calls = [_pool.submit(_localize_once, img, element)]
+    try:
+        done, _ = cf.wait(calls, timeout=POINT_HEDGE)
+        if done and not calls[0].exception():
+            return calls[0].result()
+        calls.append(_pool.submit(_localize_once, img, element))
+        for f in cf.as_completed(calls, timeout=POINT_TIMEOUT):
+            if not f.exception():
+                return f.result()
+    except cf.TimeoutError:
+        pass
+    finally:
+        for f in calls:
+            f.cancel()
+    raise SlowPoint
+
+
+def _localize_once(img: Image.Image, element: str) -> tuple[int, int] | None:
     prompt = (
         "Localize an element on the GUI image according to the provided target "
         "and output a click position.\n"

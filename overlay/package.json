@@ -2,7 +2,7 @@
   "name": "shadow-cursor-overlay",
   "version": "0.1.0",
   "private": true,
-  "description": "Shadow Cursor overlay: transparent click-through window that draws the pink cursor",
+  "description": "Twin Cursor overlay: transparent click-through window that draws the pink cursor",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "ai.shadowcursor.app",
-    "productName": "Shadow Cursor",
+    "productName": "Twin Cursor",
     "files": [
       "main.js",
       "preload.js",
@@ -48,12 +48,12 @@
       "category": "public.app-category.productivity",
       "extendInfo": {
         "LSUIElement": true,
-        "NSMicrophoneUsageDescription": "Shadow Cursor listens when you press Control-Option-Space and say what you want to do.",
-        "NSAppleEventsUsageDescription": "Shadow Cursor guides you through your apps."
+        "NSMicrophoneUsageDescription": "Twin Cursor listens when you press Control-Option-Space and say what you want to do.",
+        "NSAppleEventsUsageDescription": "Twin Cursor guides you through your apps."
       },
       "protocols": [
         {
-          "name": "Shadow Cursor",
+          "name": "Twin Cursor",
           "schemes": [
             "shadowcursor"
           ]

@@ -1,4 +1,4 @@
-"""The Shadow Cursor agent: one task at a time, driven by what happens on screen and what the
+"""The Twin Cursor agent: one task at a time, driven by what happens on screen and what the
 person says.
 
 States: idle → listening → thinking → waiting (GUIDE: the person's turn) / acting (DO)
@@ -110,7 +110,7 @@ class Agent:
         subprocess.Popen([*TTS, "--prefetch", self.said(text, whole)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    async def finish_speaking(self, cap: float = 8.0) -> None:
+    async def finish_speaking(self, cap: float = 4.0) -> None:
         """Do it mode: let the current sentence end before the next one (it used to be cut off)."""
         end = time.time() + cap
         while self.say_proc and self.say_proc.poll() is None and time.time() < end and not self.stopped:
@@ -220,7 +220,10 @@ class Agent:
         g["busy"], g["words"] = True, words
         try:
             target = f"the on-screen UI element the person needs for this request: {text}"
-            p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
+            try:
+                p = await asyncio.to_thread(planner._localize, planner.shrink(g["shot"], 1920), target)
+            except planner.SlowPoint:  # only a preview: skip it when H is slow
+                return
             if p and self.listener and not self.busy():  # still talking, no real step yet: show only
                 w, h = screen.screen_size()
                 await self.to_overlay({"type": "cursor", "x": p[0] / 1000 * w, "y": p[1] / 1000 * h,
@@ -365,7 +368,7 @@ class Agent:
             sources = [{"title": "Upgrade to Shadow Pro (9 €/month)", "url": url}]
         except billing.ERRORS as e:
             await self.log(f"Stripe not ready ({e}); upgrade from http://127.0.0.1:8765")
-            sources = [{"title": "Open Shadow Cursor to upgrade", "url": "http://127.0.0.1:8765"}]
+            sources = [{"title": "Open Twin Cursor to upgrade", "url": "http://127.0.0.1:8765"}]
         await self.to_overlay({"type": "answer", "text": "You've used today's free tasks. Shadow Pro "
                                "gives you unlimited guidance.", "sources": sources})
 
@@ -520,6 +523,7 @@ class Agent:
         last_key, repeats, pixels_ok = None, 0, True
         last_step = 0
         actions = 0
+        h_errors = 0  # H failures in a row, for the retry back-off
         pixel_stales = 0  # at most one "screen still changing" re-plan per step (videos animate)
         same_step, last_scroll, prev_thumb = 0, "", None
 
@@ -550,6 +554,8 @@ class Agent:
                     told = True  # never look frozen: say we're still on it
                     await self.panel("Still looking at your screen…", "thinking")
                 stale = self.events and "spoke" or changed_since(mark, self.task_apps)
+                if stale in ("click", "key") and self.mode == "do":
+                    stale = None  # Do it: a stray click while it thinks must not restart the plan
                 moving = (not stale and base_thumb is not None and not job.done()
                           and screen.changed(base_thumb, await asyncio.to_thread(screen.thumb)))
                 if moving:
@@ -564,10 +570,12 @@ class Agent:
             try:
                 action = job.result()
             except Exception as e:  # noqa: BLE001 - Holo timeout or API error: try again, say so
+                h_errors += 1
                 await self.log(f"Holo error ({type(e).__name__}), retrying")
                 await self.panel("H is slow right now, retrying…", "thinking")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(min(0.5 * 2 ** (h_errors - 1), 4))  # back off: 0.5, 1, 2, 4 s
                 continue
+            h_errors = 0
             pl.accept(action)
             name, args = action["name"], action["args"]
             t_plan = action["timings"]["plan"]
@@ -657,8 +665,9 @@ class Agent:
         """Show the step, then do it (DO) or watch the person (GUIDE). Returns (tool result, why)."""
         self._t_point = 0.0
         self._last_point = None
-        if self.mode == "do" and screen.frontmost_app() in screen.SYSTEM_APPS:
-            return await self.blocked(screen.frontmost_app()), "next"
+        front = screen.frontmost_app()
+        if self.mode == "do" and front in screen.SYSTEM_APPS and front not in SETTINGS_APPS:
+            return await self.blocked(front), "next"
 
         if self.mode == "do":
             refusal = risky(name, args, self.current_task)
@@ -719,14 +728,17 @@ class Agent:
             point = (nx / 1000 * w, ny / 1000 * h)
             self._last_point = point
             owner = screen.window_owner_at(*point)
-            if self.mode == "do" and owner in screen.SYSTEM_APPS:
+            front_app, front_title = screen.front_window()
+            # the sensitive-page check needs that window's title; unknown → only sidebar / search
+            title = front_title if front_app == owner else "privacy"
+            if self.mode == "do" and system_blocked(owner, args.get("element", ""), title):
                 return await self.blocked(owner), "next"
             if self.mode == "do" and owner in OWN_APPS:
                 await self.log(f"⛔ not acting in {owner}: it isn't the app of this task")
                 return (f"That spot is in {owner}, which is not part of this task. Never act there: "
                         "go back to the task's app."), "next"
             if self.mode == "do" and owner and owner not in self.task_apps and owner not in screen.SYSTEM_APPS \
-                    and owner.lower() not in self.current_task.lower():
+                    and owner.lower() not in self.current_task.lower() and not launcher(owner, self.current_task):
                 await self.log(f"⛔ not acting in {owner}: the task is in {', '.join(sorted(self.task_apps))}")
                 return (f"That spot is in {owner}, another app. Do it stays in the task's app "
                         f"({', '.join(sorted(self.task_apps))}): do the task there, or use 'say' to ask."), "next"
@@ -1046,6 +1058,28 @@ def short(label: str, n: int = 42) -> str:
     return first if len(first) <= n else first[: n - 1] + "…"
 
 
+SETTINGS_APPS = {"System Settings", "System Preferences"}
+# System Settings pages and controls Do it never touches: permissions, passwords, accounts.
+SENSITIVE = ("privacy", "security", "accessibility", "password", "users", "login", "filevault", "touch id",
+             "full disk", "screen recording", "microphone", "camera", "sharing", "profile", "allow",
+             "passkey", "keychain", "lock screen")
+
+
+def system_blocked(owner: str, element: str, title: str) -> bool:
+    """Do it may change ordinary settings (Appearance, Display, Sound…) but never a security page or
+    a macOS permission / password prompt. On a sensitive page it may only leave it (sidebar, search)."""
+    if owner not in screen.SYSTEM_APPS:
+        return False
+    if owner not in SETTINGS_APPS:
+        return True
+    el = element.lower()
+    if any(w in el for w in SENSITIVE):
+        return True
+    if any(w in title.lower() for w in SENSITIVE):
+        return not any(w in el for w in ("sidebar", "search", "back"))
+    return False
+
+
 def risky(name: str, args: dict, task: str) -> str:
     """Do it never leaves the task's app on its own, never closes or quits, never discards work."""
     t = task.lower()
@@ -1065,12 +1099,17 @@ def risky(name: str, args: dict, task: str) -> str:
     return ""
 
 
+def launcher(owner: str, task: str) -> bool:
+    """Spotlight and the Dock are how Do it opens the app a task asks for ("open System Settings…")."""
+    return owner in ("Spotlight", "Dock") and bool(re.search(r"\b(open|launch|go to|switch to)\b", task.lower()))
+
+
 OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Electron: that's our overlay
 
 
 def not_target(app: str, title: str) -> bool:
-    """Our own tools: Claude, terminals, editors, and the Shadow Cursor control page."""
-    return app in OWN_APPS or "Shadow Cursor" in title or "127.0.0.1:8765" in title
+    """Our own tools: Claude, terminals, editors, and the Twin Cursor control page."""
+    return app in OWN_APPS or "Twin Cursor" in title or "Shadow Cursor" in title or "127.0.0.1:8765" in title
 
 
 def short_args(args: dict) -> str:

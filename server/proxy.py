@@ -1,4 +1,4 @@
-"""Shadow Cursor cloud (Aiven application): the website, the Mac app download, and the API keys.
+"""Twin Cursor cloud (Aiven application): the website, the Mac app download, and the API keys.
 
 The app on a juror's Mac holds no keys: it calls /api/holo, /api/openai, /api/linkup and
 /api/gladia here with the app token, and this server forwards the request with the real key.
@@ -46,7 +46,7 @@ async def forward(req: web.Request) -> web.Response:
     if not authorized(req):
         return web.json_response({"error": "unauthorized"}, status=401)
     if not under_cap():
-        return web.json_response({"error": "Shadow Cursor reached today's limit"}, status=429)
+        return web.json_response({"error": "Twin Cursor reached today's limit"}, status=429)
     url, env, header = UPSTREAM[name]
     key = os.environ[env]
     headers = {header: f"Bearer {key}" if header == "Authorization" else key,
@@ -63,8 +63,8 @@ async def index(_req: web.Request) -> web.FileResponse:
 
 
 async def dmg(_req: web.Request) -> web.FileResponse:
-    return web.FileResponse(HERE / "Shadow-Cursor.dmg", headers={
-        "Content-Disposition": 'attachment; filename="Shadow Cursor.dmg"'})
+    return web.FileResponse(HERE / "Twin-Cursor.dmg", headers={
+        "Content-Disposition": 'attachment; filename="Twin Cursor.dmg"'})
 
 
 async def health(_req: web.Request) -> web.Response:
@@ -79,7 +79,7 @@ async def startup(_app: web.Application) -> None:
 def main() -> None:
     app = web.Application(client_max_size=25 * 1024 * 1024)  # screenshots
     app.on_startup.append(startup)
-    app.add_routes([web.get("/", index), web.get("/Shadow-Cursor.dmg", dmg), web.get("/healthz", health),
+    app.add_routes([web.get("/", index), web.get("/Twin-Cursor.dmg", dmg), web.get("/healthz", health),
                     web.route("*", "/api/{api}{tail:/?.*}", forward)])
     web.run_app(app, port=int(os.environ.get("PORT", "8080")))
 
