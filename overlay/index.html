@@ -196,7 +196,7 @@
   #listen #live:not(:empty)::after { content: '”'; }
   #panel.listening #box button { background: rgba(23, 23, 26, 0.07); color: #17171a; }
   #panel.listening #box button:hover { background: rgba(23, 23, 26, 0.13); }
-  #panel.listening #send { background: var(--accent); color: #fff; }
+  #panel.listening #box #send { background: var(--accent); color: #fff; }
   #live {
     margin-top: 6px;
     min-height: 1.3em;
@@ -268,7 +268,7 @@
       </div>
       <div id="heard"></div>
       <div id="listen">
-        <div class="state"><span class="dot"></span>Listening… ⌃⌥Space to send · ⌃⌥X to cancel</div>
+        <div class="state"><span class="dot"></span>Listening… ⌃⌥Space to send</div>
         <div id="live"></div>
         <div class="buttons">
           <button id="send" title="Send now">Send</button>
