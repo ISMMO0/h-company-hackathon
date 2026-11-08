@@ -86,6 +86,7 @@
   @keyframes float { 50% { transform: translateY(-10px); } }
   @keyframes halo { 0% { opacity: .5; transform: scale(.6); } 100% { opacity: 0; transform: scale(2.6); } }
   h1 { margin: 0; font-size: clamp(34px, 5vw, 52px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 700; }
+  h1 .h1-more { display: block; margin-top: 6px; font-size: 0.62em; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
   .sub { margin: 0; color: var(--ink-2); font-size: 17px; max-width: 40ch; }
   kbd {
     font: 600 13px -apple-system, system-ui, sans-serif; padding: 2px 7px; border-radius: 6px;
@@ -239,7 +240,7 @@
           <path d="M3 2 L3 19 L7.5 15 L10.5 21.5 L13.5 20.2 L10.5 13.8 L16.5 13.8 Z" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
         </svg>
       </div>
-      <h1>A second cursor<br>that shows you how.</h1>
+      <h1>Your second cursor.<br><span class="h1-more">It shows you how — and does it for you if you want.</span></h1>
       <p class="sub">Press <kbd>⌃⌥Space</kbd> and ask. It guides you step by step, or does it while you watch.</p>
       <div class="actions">
         <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Shadow Cursor</span></button>
