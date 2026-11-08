@@ -1010,6 +1010,8 @@ CONTROL_WORDS = {"stop", "wait", "attends", "pause", "next", "suivant", "continu
 def is_noise(text: str) -> bool:
     """One or two words with no command in them: TV, music or someone else, not the person."""
     words = re.findall(r"[\w']+", text.lower())
+    if text.strip().endswith("?") and words:  # "Now what?", "Where?": a real question, never noise
+        return False
     return len(words) <= 2 and not any(w in CONTROL_WORDS for w in words)
 
 
