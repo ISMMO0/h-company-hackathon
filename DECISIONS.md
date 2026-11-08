@@ -112,3 +112,8 @@ Team lead: in Do it, the goal is to show and explain while doing, not to finish 
 - The cursor spins while it thinks and grows a little once it arrives on what it points at
   (no idle breathing: the team lead wants it subtle, not a pet). Panel restyle: 4 options shown to the team lead (pill, speech
   bubble, island, minimal), waiting for the pick.
+
+## Sun 02:30: night test loop
+Results and fixes in docs/test-reports/2026-11-08-night-loop.md. Do it now has hard safety rules
+(stays in the task's app, never quits/closes/deletes, never types in the address bar) and learns
+per-site lessons after each run. Free quota raised locally (SHADOW_FREE_TASKS=1000): no Stripe in the demo.
