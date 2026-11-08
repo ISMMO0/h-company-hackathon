@@ -60,7 +60,7 @@ def _ask(system: str, user: str) -> dict:
 
 # --- routing ----------------------------------------------------------------------------------
 
-ROUTE_PROMPT = """You route what a person says to Shadow Cursor, a voice assistant with a pink cursor that
+ROUTE_PROMPT = """You route what a person says to Twin Cursor, a voice assistant with a pink cursor that
 helps them use apps on their Mac. Reply with JSON: {"intent": ..., "task": ..., "reply": ...}.
 
 If NO task is running, intent is one of:

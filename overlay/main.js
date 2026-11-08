@@ -274,7 +274,7 @@ function connect() {
 // Menu bar icon: the always-available way to talk, stop, hide or quit.
 function buildTray() {
   tray = new Tray(path.join(__dirname, 'tray.png'));
-  tray.setToolTip('Shadow Cursor');
+  tray.setToolTip('Twin Cursor');
   const menu = Menu.buildFromTemplate([
     { label: 'Talk / Send (⌃⌥Space)', click: () => send({ type: 'hotkey' }) },
     { label: 'Stop / Cancel (⌃⌥X)', click: () => send({ type: 'stop' }) },
@@ -292,13 +292,13 @@ function buildTray() {
     },
     { label: 'Open step log', click: () => shell.openExternal('http://127.0.0.1:8765') },
     { type: 'separator' },
-    { label: 'Quit Shadow Cursor', click: () => app.quit() },
+    { label: 'Quit Twin Cursor', click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
 }
 
-// Packaged app (Shadow Cursor.app): it starts the bundled brain itself, with the keys from
-// Resources/app.env and its data in ~/Library/Application Support/Shadow Cursor.
+// Packaged app (Twin Cursor.app): it starts the bundled brain itself, with the keys from
+// Resources/app.env and its data in ~/Library/Application Support/Twin Cursor.
 let brain = null;
 
 function readEnv(file) {

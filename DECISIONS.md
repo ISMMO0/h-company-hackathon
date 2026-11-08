@@ -2,6 +2,10 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sun 12:45** Renamed **Shadow Cursor → Twin Cursor** (team lead): clearer ("your cursor's twin") and no
+  confusion with the Cursor code editor. Visible names only (page, app, menu bar, download, prompts, voice
+  vocabulary); internal names stay (`SHADOW_*` env vars, `shadowcursor://` link, appId).
+
 - **Sun 09:00** Jury deploy (team lead): no Vercel, no Stripe. **Aiven application** `shadow-cursor-web`
   (built from branch `deploy`, `server/Dockerfile`) serves the website, the `Shadow Cursor.dmg` download
   and holds the API keys (`server/proxy.py`: /api/holo, /api/openai, /api/linkup, /api/gladia). The app

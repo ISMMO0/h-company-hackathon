@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build Shadow Cursor.dmg for the jury: frozen brain + Electron overlay, pointed at our cloud.
-#   scripts/build-mac.sh   →  build/Shadow Cursor.dmg  (Apple Silicon, ad-hoc signed)
+# Build Twin Cursor.dmg for the jury: frozen brain + Electron overlay, pointed at our cloud.
+#   scripts/build-mac.sh   →  build/Twin Cursor.dmg  (Apple Silicon, ad-hoc signed)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 B=build
@@ -19,11 +19,11 @@ rm -rf $B/knowledge && cp -R data/knowledge $B/knowledge
 
 # 3. Electron app, ad-hoc signed (unsigned apps show "damaged" on recent macOS)
 (cd overlay && npx electron-builder --mac dir --arm64 --publish never)
-APP="$B/app/mac-arm64/Shadow Cursor.app"
+APP="$B/app/mac-arm64/Twin Cursor.app"
 codesign --force --deep -s - "$APP"
 
 # 4. DMG with a drag-to-Applications link
-rm -rf $B/dmg "$B/Shadow Cursor.dmg" && mkdir $B/dmg
+rm -rf $B/dmg "$B/Twin Cursor.dmg" && mkdir $B/dmg
 cp -R "$APP" $B/dmg/ && ln -s /Applications $B/dmg/Applications
-hdiutil create -quiet -volname "Shadow Cursor" -srcfolder $B/dmg -format UDZO "$B/Shadow Cursor.dmg"
-ls -lh "$B/Shadow Cursor.dmg"
+hdiutil create -quiet -volname "Twin Cursor" -srcfolder $B/dmg -format UDZO "$B/Twin Cursor.dmg"
+ls -lh "$B/Twin Cursor.dmg"

@@ -1,4 +1,4 @@
-"""The Shadow Cursor agent: one task at a time, driven by what happens on screen and what the
+"""The Twin Cursor agent: one task at a time, driven by what happens on screen and what the
 person says.
 
 States: idle → listening → thinking → waiting (GUIDE: the person's turn) / acting (DO)
@@ -368,7 +368,7 @@ class Agent:
             sources = [{"title": "Upgrade to Shadow Pro (9 €/month)", "url": url}]
         except billing.ERRORS as e:
             await self.log(f"Stripe not ready ({e}); upgrade from http://127.0.0.1:8765")
-            sources = [{"title": "Open Shadow Cursor to upgrade", "url": "http://127.0.0.1:8765"}]
+            sources = [{"title": "Open Twin Cursor to upgrade", "url": "http://127.0.0.1:8765"}]
         await self.to_overlay({"type": "answer", "text": "You've used today's free tasks. Shadow Pro "
                                "gives you unlimited guidance.", "sources": sources})
 
@@ -1106,8 +1106,8 @@ OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Ele
 
 
 def not_target(app: str, title: str) -> bool:
-    """Our own tools: Claude, terminals, editors, and the Shadow Cursor control page."""
-    return app in OWN_APPS or "Shadow Cursor" in title or "127.0.0.1:8765" in title
+    """Our own tools: Claude, terminals, editors, and the Twin Cursor control page."""
+    return app in OWN_APPS or "Twin Cursor" in title or "Shadow Cursor" in title or "127.0.0.1:8765" in title
 
 
 def short_args(args: dict) -> str:

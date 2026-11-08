@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Shadow Cursor</title>
+<title>Twin Cursor</title>
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
 <style>
   :root {
@@ -213,7 +213,7 @@
 <aside>
   <div class="brand">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2 L3 19 L7.5 15 L10.5 21.5 L13.5 20.2 L10.5 13.8 L16.5 13.8 Z" style="fill: var(--accent)"/></svg>
-    Shadow Cursor
+    Twin Cursor
   </div>
   <nav>
     <a href="#home" data-view="home"><i class="ph ph-house"></i><span>Home</span></a>
@@ -234,7 +234,7 @@
       <h1>Your second cursor.<br><span class="h1-more">It shows you how, and does it for you if you want.</span></h1>
       <p class="sub">Press <kbd>⌃⌥Space</kbd> and ask. It guides you step by step, or does it while you watch.</p>
       <div class="actions">
-        <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Shadow Cursor</span></button>
+        <button class="cta" id="get" type="button"><i class="ph ph-cursor-click" id="get-icon"></i><span id="get-label">Get your Twin Cursor</span></button>
         <button class="ghost color-btn" id="off" type="button" hidden><i class="ph ph-power"></i>Turn off</button>
         <button class="ghost color-btn" id="color" type="button"><i class="ph ph-palette"></i>Change color</button>
       </div>
@@ -249,23 +249,23 @@
   </section>
 
   <dialog class="install" id="install" aria-labelledby="install-title">
-    <div class="custom-head"><span id="install-title">Install Shadow Cursor (one time)</span>
+    <div class="custom-head"><span id="install-title">Install Twin Cursor (one time)</span>
       <button class="icon-btn" id="install-close" type="button" aria-label="Close"><i class="ph ph-x"></i></button>
     </div>
     <ol>
       <li><a class="cta" id="dmg" download><i class="ph ph-download-simple"></i>Download for Mac</a></li>
-      <li>Open it and drag <b>Shadow Cursor</b> to <b>Applications</b>.</li>
-      <li>Open Shadow Cursor. If macOS blocks it, go to <b>System Settings › Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
-      <li>Allow <b>Microphone</b>, <b>Accessibility</b> and <b>Screen Recording</b> when macOS asks, then quit Shadow Cursor from the pink icon in the menu bar and open it again.</li>
+      <li>Open it and drag <b>Twin Cursor</b> to <b>Applications</b>.</li>
+      <li>Open Twin Cursor. If macOS blocks it, go to <b>System Settings › Privacy &amp; Security</b> and click <b>Open Anyway</b>.</li>
+      <li>Allow <b>Microphone</b>, <b>Accessibility</b> and <b>Screen Recording</b> when macOS asks, then quit Twin Cursor from the pink icon in the menu bar and open it again.</li>
     </ol>
-    <p class="wait"><i class="ph ph-circle-notch"></i>This page continues by itself once Shadow Cursor is open.</p>
+    <p class="wait"><i class="ph ph-circle-notch"></i>This page continues by itself once Twin Cursor is open.</p>
     <p class="note">If Chrome asks to let this site use apps on this device, click <b>Allow</b>. Mac with Apple chip · Chrome recommended</p>
   </dialog>
 
   <section class="view" id="view-history">
     <div class="page">
       <h2>History</h2>
-      <p class="lead">Everything you asked Shadow Cursor, grouped by what you were doing.</p>
+      <p class="lead">Everything you asked Twin Cursor, grouped by what you were doing.</p>
       <div id="history"></div>
     </div>
   </section>
@@ -287,7 +287,7 @@
         <button type="button" class="ghost" id="next">Next</button>
         <span id="status"></span>
       </div>
-      <img id="shot" alt="What Shadow Cursor sees right now">
+      <img id="shot" alt="What Twin Cursor sees right now">
       <div id="label"></div>
       <pre id="log"></pre>
     </div>
@@ -298,7 +298,7 @@
   const $ = (id) => document.getElementById(id);
   // Served by the brain (127.0.0.1:8765) or by the website, which talks to the app on this Mac.
   const API = location.port === "8765" ? "" : "http://127.0.0.1:8765";
-  const DMG_URL = "Shadow-Cursor.dmg";
+  const DMG_URL = "Twin-Cursor.dmg";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const COLORS = [
     ["Pink", "#ff3ea5"], ["Coral", "#ff6b4a"], ["Amber", "#f5a400"], ["Emerald", "#10b981"],
@@ -334,7 +334,7 @@
   $("swatches").onclick = (e) => { const b = e.target.closest(".sw[data-c]"); if (b) saveColor(b.dataset.c); };
   $("anycolor").oninput = (e) => applyColor(e.target.value);
   $("anycolor").onchange = (e) => saveColor(e.target.value);
-  // The big cursor is "your" Shadow Cursor: getting it, it jumps and flies down to your mouse;
+  // The big cursor is "your" Twin Cursor: getting it, it jumps and flies down to your mouse;
   // turning it off, it flies back from your mouse to the middle of the page.
   const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   let mouse = { x: innerWidth / 2, y: innerHeight - 80 };
@@ -366,7 +366,7 @@
     big.style.animation = "";
   }
   function cursorOn(on) {
-    $("get-label").textContent = on ? "Shadow Cursor is on" : "Get your Shadow Cursor";
+    $("get-label").textContent = on ? "Twin Cursor is on" : "Get your Twin Cursor";
     $("get-icon").className = `ph ${on ? "ph-check-circle" : "ph-cursor-click"}`;
     $("get").classList.toggle("is-on", on);
     $("off").hidden = !on;
@@ -379,7 +379,7 @@
     if (!calm()) big.classList.add("charging");
     if (!(await appReady(API ? 4000 : 0))) {
       big.classList.remove("charging");
-      $("get-label").textContent = "Get your Shadow Cursor";
+      $("get-label").textContent = "Get your Twin Cursor";
       $("install").showModal();
       if (!(await appReady(15 * 60000))) return;  // continues by itself once the app is open
       $("install").close();
