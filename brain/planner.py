@@ -200,8 +200,9 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
                 chunk.pop("image_url", None)
 
 
-POINT_TIMEOUT = 5.0
-HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "2.5"))
+POINT_TIMEOUT = 2.5
+POINT_HEDGE = 1.0  # a second pointing request if the first isn't back (it's ~0.4 s when H is well)
+HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "1.5"))
 _pool = cf.ThreadPoolExecutor(max_workers=24)
 
 
@@ -330,6 +331,26 @@ class SlowPoint(Exception):
 
 
 def _localize(img: Image.Image, element: str) -> tuple[int, int] | None:
+    """Pointing, hedged like planning: a second request after POINT_HEDGE s, SlowPoint after
+    POINT_TIMEOUT s so the caller uses the planner's rough point instead of waiting."""
+    calls = [_pool.submit(_localize_once, img, element)]
+    try:
+        done, _ = cf.wait(calls, timeout=POINT_HEDGE)
+        if done and not calls[0].exception():
+            return calls[0].result()
+        calls.append(_pool.submit(_localize_once, img, element))
+        for f in cf.as_completed(calls, timeout=POINT_TIMEOUT):
+            if not f.exception():
+                return f.result()
+    except cf.TimeoutError:
+        pass
+    finally:
+        for f in calls:
+            f.cancel()
+    raise SlowPoint
+
+
+def _localize_once(img: Image.Image, element: str) -> tuple[int, int] | None:
     prompt = (
         "Localize an element on the GUI image according to the provided target "
         "and output a click position.\n"

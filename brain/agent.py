@@ -110,7 +110,7 @@ class Agent:
         subprocess.Popen([*TTS, "--prefetch", self.said(text, whole)],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    async def finish_speaking(self, cap: float = 8.0) -> None:
+    async def finish_speaking(self, cap: float = 4.0) -> None:
         """Do it mode: let the current sentence end before the next one (it used to be cut off)."""
         end = time.time() + cap
         while self.say_proc and self.say_proc.poll() is None and time.time() < end and not self.stopped:
