@@ -7,11 +7,12 @@
 """
 
 import asyncio
-import os
 from collections.abc import Callable
 
 import aiohttp
 import sounddevice as sd
+
+from brain import cloud
 
 SAMPLE_RATE = 16000
 BLOCK = SAMPLE_RATE // 10  # 100 ms of audio per frame
@@ -87,8 +88,8 @@ class Listener:
         loop = asyncio.get_running_loop()
         frames: asyncio.Queue[bytes] = asyncio.Queue()
         self._http = aiohttp.ClientSession()
-        async with self._http.post("https://api.gladia.io/v2/live",
-                                   headers={"x-gladia-key": os.environ["GLADIA_API_KEY"]},
+        async with self._http.post(cloud.base("gladia", "https://api.gladia.io/v2/live"),
+                                   headers={"x-gladia-key": cloud.key("GLADIA_API_KEY")},
                                    json=SESSION_CONFIG) as resp:
             resp.raise_for_status()
             url = (await resp.json())["url"]

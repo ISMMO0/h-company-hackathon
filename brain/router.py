@@ -12,6 +12,8 @@ import re
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from brain import cloud
+
 _client: OpenAI | None = None
 _model: str | None = None
 
@@ -21,6 +23,8 @@ BUSY_INTENTS = ("stop", "ahead", "wait", "question", "guide", "do", "update", "n
 
 def enabled() -> bool:
     """True once OPENAI_API_KEY is in .env; re-reads .env so a key added later works without a restart."""
+    if cloud.API:
+        return True
     if not os.environ.get("OPENAI_API_KEY"):
         load_dotenv(override=False)
     return bool(os.environ.get("OPENAI_API_KEY"))
@@ -29,7 +33,8 @@ def enabled() -> bool:
 def client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=6, max_retries=0)
+        _client = OpenAI(base_url=cloud.base("openai", "https://api.openai.com/v1"), api_key=cloud.key("OPENAI_API_KEY"),
+                         timeout=6, max_retries=0)
     return _client
 
 

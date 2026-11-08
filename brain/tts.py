@@ -12,6 +12,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from brain import cloud
+
 VOICE = os.environ.get("SHADOW_VOICE", "sage")
 MODEL = "gpt-4o-mini-tts"
 STYLE = "Friendly, calm tutor showing someone how to use an app. Natural, slightly brisk pace."
@@ -19,7 +21,7 @@ CACHE = Path("data") / "tts-cache"  # relative to the working dir: the repo, or 
 
 
 def _key() -> str:
-    key = os.environ.get("OPENAI_API_KEY", "")
+    key = cloud.key("OPENAI_API_KEY")
     if key:
         return key
     env = Path(".env")
@@ -34,7 +36,7 @@ def audio_file(text: str) -> Path:
     if f.exists():
         return f
     req = urllib.request.Request(
-        "https://api.openai.com/v1/audio/speech",
+        cloud.base("openai", "https://api.openai.com/v1") + "/audio/speech",
         data=json.dumps({"model": MODEL, "voice": VOICE, "input": text, "instructions": STYLE,
                          "response_format": "mp3"}).encode(),
         headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"})

@@ -8,9 +8,10 @@ exploring.
 
 import html
 import json
-import os
 
 import requests
+
+from brain import cloud
 
 URL = "https://api.linkup.so/v1/search"
 
@@ -28,7 +29,7 @@ PLAYBOOK_SCHEMA = {
 
 
 def _post(body: dict, timeout: float) -> dict:
-    r = requests.post(URL, headers={"Authorization": f"Bearer {os.environ['LINKUP_API_KEY']}"},
+    r = requests.post(cloud.base("linkup", URL), headers={"Authorization": f"Bearer {cloud.key('LINKUP_API_KEY')}"},
                       json=body, timeout=timeout)
     r.raise_for_status()
     return r.json()

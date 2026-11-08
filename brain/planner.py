@@ -16,6 +16,8 @@ import time
 from openai import APITimeoutError, OpenAI
 from PIL import Image
 
+from brain import cloud
+
 MODEL = os.environ.get("HOLO_MODEL", "holo4-27b")
 POINT_MODEL = os.environ.get("HOLO_POINT_MODEL", "holo4-27b")
 EFFORT = os.environ.get("HOLO_EFFORT", "low")  # holo4-27b: low | medium | xhigh | none
@@ -29,7 +31,7 @@ def client() -> OpenAI:
     global _client
     if _client is None:
         # Never wait forever on one request: a stuck call froze a whole task in testing.
-        _client = OpenAI(base_url="https://api.hcompany.ai/v1", api_key=os.environ["HAI_API_KEY"],
+        _client = OpenAI(base_url=cloud.base("holo", "https://api.hcompany.ai/v1"), api_key=cloud.key("HAI_API_KEY"),
                          timeout=12, max_retries=0)
     return _client
 
