@@ -40,8 +40,11 @@ agent = Agent(to_overlay=lambda m: _send(overlays, m), to_ui=lambda m: _send(uis
 agent.overlay_connected = lambda: bool(overlays)
 
 
+LOCAL = {BASE_URL, "http://localhost:8765"}
+
+
 def allowed(origin: str | None) -> bool:
-    return not origin or origin == BASE_URL or bool(SITE.fullmatch(origin))
+    return not origin or origin in LOCAL or bool(SITE.fullmatch(origin))
 
 
 @web.middleware
@@ -50,7 +53,7 @@ async def cors(req: web.Request, handler):
     if not allowed(origin):
         return web.json_response({"error": "origin not allowed"}, status=403)
     resp = web.Response() if req.method == "OPTIONS" else await handler(req)
-    if origin and origin != BASE_URL:
+    if origin and origin not in LOCAL:
         resp.headers.update({"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET, POST",
                              "Access-Control-Allow-Headers": "Content-Type",
                              "Access-Control-Allow-Private-Network": "true"})

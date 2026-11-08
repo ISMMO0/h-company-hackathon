@@ -202,7 +202,7 @@ def trim_to_last_n_images(messages: list, n: int = 3) -> None:
 
 POINT_TIMEOUT = 5.0
 HEDGE_AFTER = float(os.environ.get("HOLO_HEDGE_AFTER", "2.5"))
-_pool = cf.ThreadPoolExecutor(max_workers=10)
+_pool = cf.ThreadPoolExecutor(max_workers=16)
 
 
 def _create_hedged(messages: list, tools: list):
