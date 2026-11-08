@@ -179,23 +179,23 @@
   #listen { display: none; }
   #panel.listening #listen { display: block; }
   #panel.listening .row, #panel.listening #why, #panel.listening #state, #panel.listening #buttons { display: none; }
-  /* Speech bubble: white, your words in quotes, the sharp corner points at the pink cursor. */
+  /* Speech bubble: black, your words in quotes, the sharp corner points at the pink cursor. */
   #panel.listening #card {
     padding: 10px 14px;
     border-radius: 3px 16px 16px 16px;
-    background: #fff;
-    color: #17171a;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    background: #17171a;
+    color: #fff;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
   }
   #panel.listening.flip-x #card { border-radius: 16px 3px 16px 16px; }
   #panel.listening.flip-y #card { border-radius: 16px 16px 16px 3px; }
   #panel.listening.flip-x.flip-y #card { border-radius: 16px 16px 3px 16px; }
-  #listen .state { margin-top: 0; color: rgba(23, 23, 26, 0.5); }
+  #listen .state { margin-top: 0; color: rgba(255, 255, 255, 0.55); }
   #listen #live { font-size: 14px; line-height: 1.4; }
   #listen #live:not(:empty)::before { content: '“'; }
   #listen #live:not(:empty)::after { content: '”'; }
-  #panel.listening #box button { background: rgba(23, 23, 26, 0.07); color: #17171a; }
-  #panel.listening #box button:hover { background: rgba(23, 23, 26, 0.13); }
+  #panel.listening #box button { background: rgba(255, 255, 255, 0.12); color: #fff; }
+  #panel.listening #box button:hover { background: rgba(255, 255, 255, 0.22); }
   #panel.listening #box #send { background: var(--accent); color: #fff; }
   #live {
     margin-top: 6px;
