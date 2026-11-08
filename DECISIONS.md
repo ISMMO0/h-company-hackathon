@@ -2,6 +2,14 @@
 
 Newest first. One line per decision, with the reason.
 
+- **Sun 09:00** Jury deploy (team lead): no Vercel, no Stripe. **Aiven application** `shadow-cursor-web`
+  (built from branch `deploy`, `server/Dockerfile`) serves the website, the `Shadow Cursor.dmg` download
+  and holds the API keys (`server/proxy.py`: /api/holo, /api/openai, /api/linkup, /api/gladia). The app
+  (`scripts/build-mac.sh`: frozen brain + Electron, Apple Silicon, ad-hoc signed) has **no keys**: it calls
+  the proxy (`SHADOW_API`). The website's Get button talks to the app on the juror's Mac (127.0.0.1:8765,
+  CORS only for our site), opens it via `shadowcursor://`, or shows the one-time install pop-up. A website
+  alone cannot move a Mac's mouse, so the small install is unavoidable.
+
 - **Sat 20:45** Do it tested on Google Sheets (docs/test-reports/2026-11-07-sheets-do-it.md): 3-row budget
   table now done in ~10 s (was 1 row in 4 min) thanks to whole-row typing (\t / \n), "no progress" based
   on an unchanged screen, noise ignored. New gestures: right-click, double-click, drag.
