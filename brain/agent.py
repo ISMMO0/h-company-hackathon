@@ -727,7 +727,7 @@ class Agent:
                 return (f"That spot is in {owner}, which is not part of this task. Never act there: "
                         "go back to the task's app."), "next"
             if self.mode == "do" and owner and owner not in self.task_apps and owner not in screen.SYSTEM_APPS \
-                    and owner.lower() not in self.current_task.lower():
+                    and owner.lower() not in self.current_task.lower() and not launcher(owner, self.current_task):
                 await self.log(f"⛔ not acting in {owner}: the task is in {', '.join(sorted(self.task_apps))}")
                 return (f"That spot is in {owner}, another app. Do it stays in the task's app "
                         f"({', '.join(sorted(self.task_apps))}): do the task there, or use 'say' to ask."), "next"
@@ -1086,6 +1086,11 @@ def risky(name: str, args: dict, task: str) -> str:
             and not re.search(r"\b(open|launch|start)\b", t):
         return "Not opening other apps from the Dock or Applications: Do it stays in the task's app."
     return ""
+
+
+def launcher(owner: str, task: str) -> bool:
+    """Spotlight and the Dock are how Do it opens the app a task asks for ("open System Settings…")."""
+    return owner in ("Spotlight", "Dock") and bool(re.search(r"\b(open|launch|start|go to|switch)\b", task.lower()))
 
 
 OWN_APPS = {"Claude", "Terminal", "iTerm2", "Code", "Cursor", "Warp"}  # not Electron: that's our overlay

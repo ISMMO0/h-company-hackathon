@@ -34,3 +34,10 @@ def test_system_settings_guard():
     assert system_blocked("System Settings", "Shadow Cursor toggle", "Accessibility")
     assert system_blocked("System Settings", "Privacy & Security in the sidebar", "Appearance")
     assert system_blocked("SecurityAgent", "Allow button", "")
+
+
+def test_launcher_allowed_only_to_open_an_app():
+    from brain.agent import launcher
+    assert launcher("Spotlight", "Open System Settings and switch Appearance to Light")
+    assert not launcher("Spotlight", "Make a SUM in column A")
+    assert not launcher("rekordbox", "Open System Settings")
